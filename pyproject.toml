@@ -1,0 +1,17 @@
+[project]
+name = "robin-runtime"
+version = "0.0.1"
+description = "Robin — AI chief of staff runtime for the AI-Orchestrators ecosystem (implements ../prograph-vault/ROBIN-SPEC.local.md)"
+requires-python = ">=3.12"
+dependencies = [
+    # Wire these with `uv add` when moving past the M0 tool-layer slice:
+    # "claude-agent-sdk",     # slot 2: agent runtime
+    # "python-telegram-bot",  # slot 1: chat adapter (long polling)
+    # "pydantic-settings",    # config (repo convention)
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 88
