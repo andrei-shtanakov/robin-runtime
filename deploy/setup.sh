@@ -16,16 +16,18 @@ REPOS=(prograph-vault atp-platform Maestro arbiter spec-runner deployer dispatch
 echo "== packages =="
 apt-get update -q
 apt-get install -y -q git curl nginx
-command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
-# slot 2 is the direct anthropic SDK (pure Python) — no Node/Claude CLI needed.
+# system-wide so the robin user can run it too; slot 2 is the direct anthropic SDK
+# (pure Python) — no Node/Claude CLI needed.
+command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 echo "== user + layout =="
 id robin &>/dev/null || useradd --system --create-home --home-dir "$ROBIN_HOME" robin
-mkdir -p "$MIRRORS" "$RUNTIME"
+mkdir -p "$MIRRORS" "$RUNTIME" "$ROBIN_HOME/var"
+chown -R robin:robin "$ROBIN_HOME"
 
 echo "== runtime code =="
 if [ ! -d "$RUNTIME/.git" ]; then
-    git clone "$GIT_BASE/robin-runtime.git" "$RUNTIME"
+    sudo -u robin git clone "$GIT_BASE/robin-runtime.git" "$RUNTIME"
 fi
 (cd "$RUNTIME" && sudo -u robin uv sync)
 
