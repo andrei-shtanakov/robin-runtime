@@ -44,9 +44,13 @@ class RobinConfig:
     web_token: str | None = None
     web_port: int = 8080
 
-    # slot 21 voice: provider-keyed (voice.py registry)
+    # slot 21 voice: provider-keyed (voice.py registry). Models are env-pinnable — use an
+    # alias or a dated snapshot, but only ids the OpenAI project actually exposes
+    # (GET /v1/models); a non-enabled model 403s at call time.
     stt_provider: str = "openai"
     tts_provider: str = "openai"
+    stt_model: str = "whisper-1"
+    tts_model: str = "tts-1"
     tts_voice: str = "alloy"
 
     history_turns: int = 10  # slots 13/14: reseed window
@@ -84,6 +88,8 @@ def load_config() -> RobinConfig:
         web_port=int(os.environ.get("ROBIN_WEB_PORT", "8080")),
         stt_provider=os.environ.get("ROBIN_STT_PROVIDER", "openai"),
         tts_provider=os.environ.get("ROBIN_TTS_PROVIDER", "openai"),
+        stt_model=os.environ.get("ROBIN_STT_MODEL", "whisper-1"),
+        tts_model=os.environ.get("ROBIN_TTS_MODEL", "tts-1"),
         tts_voice=os.environ.get("ROBIN_TTS_VOICE", "alloy"),
         history_turns=int(os.environ.get("ROBIN_HISTORY_TURNS", "10")),
     )

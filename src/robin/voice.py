@@ -70,13 +70,13 @@ class OpenAiTts:
 
 def make_stt(config: RobinConfig) -> Stt:
     if config.stt_provider == "openai":
-        return OpenAiStt()
+        return OpenAiStt(model=config.stt_model)
     raise ValueError(f"unknown STT provider: {config.stt_provider}")
 
 
 def make_tts(config: RobinConfig) -> Tts:
     if config.tts_provider == "openai":
-        return OpenAiTts(voice=config.tts_voice)
+        return OpenAiTts(voice=config.tts_voice, model=config.tts_model)
     raise ValueError(f"unknown TTS provider: {config.tts_provider}")
 
 
