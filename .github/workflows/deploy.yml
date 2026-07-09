@@ -2,13 +2,9 @@ name: CI + deploy to VPS
 
 on:
   push:
-    branches: [master]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
-
-concurrency:
-  group: deploy
-  cancel-in-progress: false
 
 jobs:
   test:
@@ -16,17 +12,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # Python version pinning is delegated to uv: `uv sync` provisions an
+      # interpreter matching pyproject's requires-python (>=3.12) regardless of
+      # what the runner image ships.
       - run: uv sync
       - run: uv run pytest -q
         # KB-dependent tests skip automatically when the vault isn't mounted
       - run: uv run ruff check src tests
 
   deploy:
-    # push to master only — PRs stop at tests
-    if: github.event_name != 'pull_request'
+    # deploy only from master (push or manual dispatch); PRs and branch pushes stop at tests
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
     environment: production
+    # serialize deploys only — test runs stay parallel
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     env:
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
     steps:
@@ -39,8 +42,9 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H pr0sto.net >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes admin@pr0sto.net '
+          # pinned host key (public) — no TOFU via ssh-keyscan at run time
+          echo 'pr0sto.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOsW0+ZFhWmeQesTMWzn+6SDQbp3nGnD5Klk/dfrKhk' > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes admin@pr0sto.net '
             set -euo pipefail
             cd /srv/robin/robin-runtime
             sudo -u robin git pull --ff-only
