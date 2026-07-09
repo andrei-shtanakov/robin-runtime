@@ -12,6 +12,7 @@ import time
 
 from .config import RobinConfig, load_config
 from .digest import CADENCE_HOURS, _marker
+from .log import setup_logging
 
 logger = logging.getLogger("robin.liveness")
 
@@ -47,7 +48,7 @@ async def alert(config: RobinConfig, kinds: list[str]) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    setup_logging()
     config = load_config()
     kinds = stale_kinds(config)
     if not kinds:

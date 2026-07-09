@@ -26,6 +26,7 @@ from ..agent import Answer, ask
 from ..changes import parse_period
 from ..config import RobinConfig, load_config
 from ..voice import Stt, Tts, make_stt, make_tts, speakable
+from ..log import setup_logging
 
 logger = logging.getLogger("robin.telegram")
 
@@ -221,7 +222,7 @@ def build_application(runtime: Runtime) -> Application:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    setup_logging()
     config = load_config()
     runtime = Runtime(config=config)
     try:

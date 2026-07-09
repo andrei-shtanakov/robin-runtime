@@ -21,6 +21,7 @@ from .agent import _compose_answer  # same single LLM call site
 from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
 from .kb import Hit
+from .log import setup_logging
 
 logger = logging.getLogger("robin.digest")
 
@@ -122,7 +123,7 @@ def run(kind: str) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    setup_logging()
     kind = sys.argv[1] if len(sys.argv) > 1 else "daily"
     if kind not in CADENCE_HOURS:
         raise SystemExit(f"usage: python -m robin.digest {'|'.join(CADENCE_HOURS)}")

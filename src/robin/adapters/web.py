@@ -20,6 +20,7 @@ from .. import fmt, guard, memory
 from ..agent import ask
 from ..config import RobinConfig, load_config
 from ..voice import Stt, Tts, make_stt, make_tts, speakable
+from ..log import setup_logging
 
 logger = logging.getLogger("robin.web")
 
@@ -137,7 +138,7 @@ def _plain(result: dict) -> str:
 def main() -> None:
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
     uvicorn.run(app, host="127.0.0.1", port=_config().web_port)
 
 
