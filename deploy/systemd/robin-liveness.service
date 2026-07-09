@@ -1,0 +1,9 @@
+[Unit]
+Description=Robin: §7 liveness check — alert when digests go stale
+
+[Service]
+Type=oneshot
+User=robin
+WorkingDirectory=/srv/robin/robin-runtime
+EnvironmentFile=/srv/robin/robin.env
+ExecStart=/srv/robin/robin-runtime/.venv/bin/python -m robin.liveness

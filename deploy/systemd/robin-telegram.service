@@ -1,0 +1,20 @@
+[Unit]
+Description=Robin Telegram adapter (long polling)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=robin
+WorkingDirectory=/srv/robin/robin-runtime
+EnvironmentFile=/srv/robin/robin.env
+ExecStart=/srv/robin/robin-runtime/.venv/bin/python -m robin.adapters.telegram
+Restart=on-failure
+RestartSec=10
+# hardening: system is read-only; /srv/robin stays writable (var/ store + the Claude
+# CLI's own ~/.claude state). Mirrors are guarded by policy + read-only code paths (§4).
+ProtectSystem=strict
+ReadWritePaths=/srv/robin
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

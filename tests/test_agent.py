@@ -32,3 +32,14 @@ def test_build_prompt_includes_sources_and_question() -> None:
     prompt = build_prompt("who owns the catalog?", sources)
     assert "authored/decisions/adr.md:22" in prompt
     assert "who owns the catalog?" in prompt
+
+
+def test_build_prompt_history_is_marked_untrusted_and_precedes_sources() -> None:
+    from robin.agent import Turn
+
+    sources = [Hit("authored/decisions/adr.md", 22, "catalog")]
+    history = [Turn("user", "what is arbiter?"), Turn("robin", "the policy engine")]
+    prompt = build_prompt("and who consumes it?", sources, history=history)
+    assert "untrusted" in prompt
+    assert prompt.index("RECENT CONVERSATION") < prompt.index("SOURCES:")
+    assert "- user: what is arbiter?" in prompt

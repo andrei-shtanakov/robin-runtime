@@ -1,0 +1,9 @@
+[Unit]
+Description=Robin: daily digest at 09:00 (system TZ — align with ROBIN_TZ)
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

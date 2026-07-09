@@ -4,14 +4,29 @@ version = "0.0.1"
 description = "Robin — AI chief of staff runtime for the AI-Orchestrators ecosystem (implements ../prograph-vault/ROBIN-SPEC.local.md)"
 requires-python = ">=3.12"
 dependencies = [
-    # Wire these with `uv add` when moving past the M0 tool-layer slice:
-    # "claude-agent-sdk",     # slot 2: agent runtime
-    # "python-telegram-bot",  # slot 1: chat adapter (long polling)
-    # "pydantic-settings",    # config (repo convention)
+    "claude-agent-sdk>=0.2.114",  # slot 2: agent runtime
+    "python-telegram-bot>=21,<23",  # slot 1: chat adapter (long polling)
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "openai>=1.30",  # slot 21 default STT/TTS provider (pluggable via voice.py)
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robin"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 88
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.20",
+]

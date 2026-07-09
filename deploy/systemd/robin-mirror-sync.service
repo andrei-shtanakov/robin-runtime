@@ -1,0 +1,8 @@
+[Unit]
+Description=Robin: fast-forward the read-only ecosystem mirrors
+
+[Service]
+Type=oneshot
+User=robin
+Environment=MIRRORS=/srv/robin/mirrors
+ExecStart=/usr/bin/bash /srv/robin/robin-runtime/deploy/sync-mirrors.sh

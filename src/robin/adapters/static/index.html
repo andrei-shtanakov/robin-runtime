@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robin — ecosystem Q&amp;A</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --text:#e6e6e6; --muted:#8a8f98; --accent:#4f8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+         display:flex; flex-direction:column; height:100dvh; }
+  header { padding:12px 16px; background:var(--panel); display:flex; gap:12px; align-items:center; }
+  header h1 { font-size:16px; margin:0; flex:1; }
+  header input { background:var(--bg); color:var(--text); border:1px solid #2a2f3a;
+                 border-radius:6px; padding:6px 10px; width:220px; }
+  #log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:min(72ch, 90%); padding:10px 14px; border-radius:12px; white-space:pre-wrap;
+         overflow-wrap:break-word; }
+  .user { align-self:flex-end; background:var(--accent); color:#fff; }
+  .robin { align-self:flex-start; background:var(--panel); }
+  .robin code { background:#0c0e12; padding:1px 5px; border-radius:4px; font-size:13px; }
+  .meta { color:var(--muted); font-size:12px; }
+  form { display:flex; gap:8px; padding:12px 16px; background:var(--panel); }
+  form input[type=text] { flex:1; background:var(--bg); color:var(--text);
+                          border:1px solid #2a2f3a; border-radius:8px; padding:10px 12px; }
+  button { border:0; border-radius:8px; padding:10px 16px; background:var(--accent);
+           color:#fff; cursor:pointer; font-size:15px; }
+  button:disabled { opacity:.5; cursor:default; }
+  #mic.rec { background:#e5484d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐦 Robin — ecosystem Q&amp;A</h1>
+  <input id="token" type="password" placeholder="access token" autocomplete="current-password">
+</header>
+<div id="log"></div>
+<form id="form">
+  <input id="text" type="text" placeholder="Ask about the ecosystem… / Спросите об экосистеме…" autofocus>
+  <button id="mic" type="button" title="hold to talk">🎤</button>
+  <button type="submit">Send</button>
+</form>
+<script>
+const log = document.getElementById('log');
+const tokenInput = document.getElementById('token');
+tokenInput.value = localStorage.getItem('robin_token') || '';
+tokenInput.addEventListener('change', () => localStorage.setItem('robin_token', tokenInput.value));
+const chatId = localStorage.robin_chat ||= Math.random().toString(36).slice(2, 10);
+
+function add(cls, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+async function call(path, body, isForm) {
+  const headers = { 'Authorization': 'Bearer ' + tokenInput.value };
+  if (!isForm) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, { method:'POST', headers, body: isForm ? body : JSON.stringify(body) });
+  if (!res.ok) throw new Error((await res.text()).slice(0, 300) || res.status);
+  return res.json();
+}
+
+function renderAnswer(data) {
+  // answer_html is server-escaped Telegram-style HTML (b/code only) — safe to inject.
+  add('robin', data.answer_html);
+  if (data.audio_b64) {
+    const audio = new Audio('data:audio/ogg;base64,' + data.audio_b64);
+    audio.play().catch(() => {});
+  }
+}
+
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const input = document.getElementById('text');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  add('user', esc(text));
+  const pending = add('meta', 'thinking…');
+  try {
+    const data = await call('/api/ask', { text, chat_id: chatId });
+    pending.remove();
+    renderAnswer(data);
+  } catch (err) { pending.textContent = '⚠ ' + esc(String(err.message || err)); }
+});
+
+// --- voice: hold the mic button (or click to toggle) ---
+let recorder = null, chunks = [];
+const mic = document.getElementById('mic');
+mic.addEventListener('click', async () => {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);      // Chrome: audio/webm, Firefox: audio/ogg
+    chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      mic.classList.remove('rec');
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const form = new FormData();
+      form.append('audio', blob, 'voice');
+      form.append('chat_id', chatId);
+      const pending = add('meta', 'transcribing…');
+      try {
+        const data = await call('/api/ask-voice', form, true);
+        pending.remove();
+        add('user', '🎙 ' + esc(data.transcript));
+        renderAnswer(data);
+      } catch (err) { pending.textContent = '⚠ ' + esc(String(err.message || err)); }
+    };
+    recorder.start();
+    mic.classList.add('rec');
+  } catch (err) { add('meta', '⚠ mic: ' + esc(String(err.message || err))); }
+});
+</script>
+</body>
+</html>

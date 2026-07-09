@@ -1,0 +1,18 @@
+[Unit]
+Description=Robin web chat adapter (uvicorn behind nginx)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=robin
+WorkingDirectory=/srv/robin/robin-runtime
+EnvironmentFile=/srv/robin/robin.env
+ExecStart=/srv/robin/robin-runtime/.venv/bin/python -m robin.adapters.web
+Restart=on-failure
+RestartSec=10
+ProtectSystem=strict
+ReadWritePaths=/srv/robin
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
