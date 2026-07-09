@@ -28,7 +28,7 @@ all_ai_orchestrators/          (VPS: /srv/robin/ + mirrors/)
 |---|---|
 | `src/robin/config.py` | env config: mounts, model, §7 caps, chat registry (slots 5,6,7,17) |
 | `src/robin/kb.py` | read-only Tool Layer — search/read over the mounts (§3, §4) |
-| `src/robin/agent.py` | the single LLM call site: routed retrieval → grounded cited answer + append-only log (§7) |
+| `src/robin/agent.py` | the single LLM call site (direct `anthropic` SDK — slot 2, maintainer decision 2026-07-09): routed retrieval → grounded cited answer + append-only log (§7) |
 | `src/robin/changes.py` | "what changed?" retrieval: period parsing (RU/EN) + `git log` over mirrors + vault journals |
 | `src/robin/digest.py` | daily/weekly digest duty → Telegram channel + `var/digests/` (M2) |
 | `src/robin/guard.py` | §7 daily budget cap, per-user rate limit, `/cost` report |

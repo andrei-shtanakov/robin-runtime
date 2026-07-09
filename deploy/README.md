@@ -18,8 +18,8 @@ Target layout (always-on VPS, ROBIN-SPEC slot 3):
 # on the VPS, as root:
 git clone <your-remote>/robin-runtime.git /srv/robin/robin-runtime
 cd /srv/robin/robin-runtime
-GIT_BASE=git@github.com:your-org sudo -E deploy/setup.sh   # packages, uv, node, claude CLI,
-                                                           # mirrors, units, robin user
+GIT_BASE=git@github.com:your-org sudo -E deploy/setup.sh   # packages, uv, mirrors,
+                                                           # units, robin user
 sudo vi /srv/robin/robin.env                               # fill every var (see env.example)
 sudo timedatectl set-timezone Europe/…                     # MUST match ROBIN_TZ (digest cron)
 sudo systemctl enable --now robin-telegram robin-web
@@ -58,7 +58,7 @@ server {
 ## Manual smoke checklist (what offline tests can't cover)
 
 - [ ] `sudo -u robin bash -lc 'cd /srv/robin/robin-runtime && set -a && . /srv/robin/robin.env && .venv/bin/python -m robin.agent "Which repo owns the agents-catalog SSOT?"'`
-      → cited answer, cost printed (M0; proves ANTHROPIC key + claude CLI + mirrors).
+      → cited answer, cost printed (M0; proves the ANTHROPIC key + mirrors).
 - [ ] DM the bot a text question → cited answer (M1). Ask a colleague, not the builder.
 - [ ] DM «что изменилось за неделю?» → answer grounded in `repo@sha` cites.
 - [ ] Send a voice note → `🎙 transcript` + text answer + voice reply.

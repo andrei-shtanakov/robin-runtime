@@ -17,12 +17,7 @@ echo "== packages =="
 apt-get update -q
 apt-get install -y -q git curl nginx
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
-# Agent SDK drives the Claude Code CLI (slot 2) — needs Node.
-command -v node >/dev/null || {
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y -q nodejs
-}
-command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
+# slot 2 is the direct anthropic SDK (pure Python) — no Node/Claude CLI needed.
 
 echo "== user + layout =="
 id robin &>/dev/null || useradd --system --create-home --home-dir "$ROBIN_HOME" robin

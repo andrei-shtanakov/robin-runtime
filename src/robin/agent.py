@@ -117,6 +117,36 @@ def _system_prompt(config: RobinConfig) -> str:
     return f"{persona}\n\n---\n{_ANSWER_RULES}".strip()
 
 
+# USD per MTok (input, output) — for the §7 budget guard. The API reports usage, not
+# dollars, so we price it ourselves; unknown models log cost=None rather than a wrong number.
+_PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-sonnet-5": (3.00, 15.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+
+
+def _estimate_cost(model: str, usage: object) -> float | None:
+    """Price a Messages API usage block: uncached input + cache write (1.25x) +
+    cache read (0.1x) + output."""
+    for prefix, (per_in, per_out) in _PRICES_PER_MTOK.items():
+        if model.startswith(prefix):
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
+            cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            return (
+                input_tokens * per_in
+                + cache_write * 1.25 * per_in
+                + cache_read * 0.10 * per_in
+                + output_tokens * per_out
+            ) / 1_000_000
+    return None
+
+
 def _compose_answer(
     question: str,
     sources: list[Hit],
@@ -125,38 +155,37 @@ def _compose_answer(
     history: list[Turn] | None = None,
 ) -> tuple[str, float | None]:
     try:
-        import anyio
-        from claude_agent_sdk import (
-            AssistantMessage,
-            ClaudeAgentOptions,
-            ResultMessage,
-            TextBlock,
-            query,
-        )
+        import anthropic
     except ImportError as exc:  # pragma: no cover - needs the SDK installed
         raise RuntimeError(
-            "claude-agent-sdk not installed. Run `uv sync` and set ANTHROPIC_API_KEY, "
+            "anthropic SDK not installed. Run `uv sync` and set ANTHROPIC_API_KEY, "
             "or call ask(retrieve_only=True) for the M0 slice."
         ) from exc
 
     prompt = build_prompt(question, sources, history=history)
-    # §6.5 isolation: setting_sources left unset => host CLAUDE.md / .mcp.json / settings are
-    # NOT loaded into Robin's context. No tools: the orchestrator already did retrieval (§3).
-    options = ClaudeAgentOptions(
-        model=config.model, system_prompt=_system_prompt(config), max_turns=1
+    # slot 2 (maintainer decision 2026-07-09): direct Messages API instead of the Claude
+    # Agent SDK — no Node/CLI on the VPS. §6.5 isolation holds by construction: nothing but
+    # soul.md + the answer rules enters the context. No tools: retrieval already happened (§3).
+    # The stable system prompt carries a cache breakpoint so repeat questions hit the cache.
+    client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from env (slot 17)
+    response = client.messages.create(
+        model=config.model,
+        max_tokens=16_000,
+        thinking={"type": "adaptive"},
+        system=[
+            {
+                "type": "text",
+                "text": _system_prompt(config),
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": prompt}],
     )
-
-    async def _run() -> tuple[str, float | None]:
-        chunks: list[str] = []
-        cost: float | None = None
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                chunks += [b.text for b in message.content if isinstance(b, TextBlock)]
-            elif isinstance(message, ResultMessage):
-                cost = message.total_cost_usd
-        return "".join(chunks), cost
-
-    return anyio.run(_run)
+    cost = _estimate_cost(config.model, response.usage)
+    if response.stop_reason == "refusal":
+        return "I can't help with that request.", cost
+    text = "".join(block.text for block in response.content if block.type == "text")
+    return text, cost
 
 
 def _log(var_dir: Path, **fields: object) -> None:

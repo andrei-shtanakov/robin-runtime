@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Robin — AI chief of staff runtime for the AI-Orchestrators ecosystem (implements ../prograph-vault/ROBIN-SPEC.local.md)"
 requires-python = ">=3.12"
 dependencies = [
-    "claude-agent-sdk>=0.2.114",  # slot 2: agent runtime
+    "anthropic>=0.50",  # slot 2: agent runtime — direct API (maintainer decision 2026-07-09)
     "python-telegram-bot>=21,<23",  # slot 1: chat adapter (long polling)
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
