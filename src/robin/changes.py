@@ -29,11 +29,12 @@ class Period:
     label: str
 
 
-# Ordered: more specific patterns first. RU + EN.
+# Ordered: more specific patterns first. RU + EN; RU stems cover inflected forms
+# («сегодняшних», «вчерашние», «недавние»).
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(?:позавчера|day before yesterday)\b", re.I), "day_before_yesterday"),
-    (re.compile(r"\b(?:вчера|yesterday)\b", re.I), "yesterday"),
-    (re.compile(r"\b(?:сегодня|за день|today)\b", re.I), "today"),
+    (re.compile(r"\b(?:вчера(?:шн\w*)?|yesterday)\b", re.I), "yesterday"),
+    (re.compile(r"\b(?:сегодня(?:шн\w*)?|за день|today)\b", re.I), "today"),
     (re.compile(r"\b(?:на этой неделе|за неделю|this week|за последнюю неделю|past week|last 7 days)\b", re.I), "week"),
     (re.compile(r"\b(?:на прошлой неделе|last week)\b", re.I), "last_week"),
     (re.compile(r"\b(?:за месяц|в этом месяце|this month|за последний месяц|past month)\b", re.I), "month"),
@@ -41,6 +42,8 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bза\s+(\d{1,3})\s+(?:дн|день|дня|дней)", re.I), "n_days"),
     (re.compile(r"\b(?:last|past)\s+(\d{1,3})\s+days?\b", re.I), "n_days"),
     (re.compile(r"\b(?:с|since|from)\s+(\d{4}-\d{2}-\d{2})\b", re.I), "since_date"),
+    # vague recency LAST — must not shadow the specific windows above
+    (re.compile(r"\b(?:что нового|недавн\w*|в последнее время|за последние дни|recently|what.s new|latest changes)\b", re.I), "week"),
 ]
 
 

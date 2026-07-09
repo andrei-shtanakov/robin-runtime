@@ -32,6 +32,12 @@ NOW = datetime(2026, 7, 9, 12, 0, tzinfo=timezone.utc)
         ("last 10 days of changes", "last 10 days"),
         ("what changed since 2026-07-01", "since 2026-07-01"),
         ("что изменилось с 2026-07-01", "since 2026-07-01"),
+        # inflected RU forms + vague-recency phrasings (production regression 2026-07-09)
+        ("что можешь сказать о сегодняшних изменениях в проектах?", "today"),
+        ("вчерашние изменения", "yesterday"),
+        ("что нового?", "past week"),
+        ("недавние изменения в проектах", "past week"),
+        ("what is new recently?", "past week"),
     ],
 )
 def test_parse_period_matrix(text: str, label: str) -> None:
