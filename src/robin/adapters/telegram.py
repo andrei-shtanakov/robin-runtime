@@ -81,8 +81,11 @@ def gate(config: RobinConfig, update: Update) -> str | None:
     return None
 
 
-def _addressed_text(message: Message, bot_username: str) -> str | None:
-    """DM text is always addressed; in groups only an @mention is (mention stripped)."""
+def _addressed_text(
+    message: Message, bot_username: str, bot_id: int | None = None
+) -> str | None:
+    """DM text is always addressed; in groups an @mention (stripped) or a reply to one of
+    the bot's own messages is. Replies work even with BotFather privacy mode ON."""
     text = message.text or ""
     if message.chat.type == ChatType.PRIVATE:
         return text
@@ -90,6 +93,14 @@ def _addressed_text(message: Message, bot_username: str) -> str | None:
     if mention.lower() in text.lower():
         cleaned = text.replace(mention, "").strip()
         return cleaned or None
+    reply = getattr(message, "reply_to_message", None)
+    if (
+        reply is not None
+        and getattr(reply, "from_user", None) is not None
+        and bot_id is not None
+        and reply.from_user.id == bot_id
+    ):
+        return text.strip() or None
     return None
 
 
@@ -164,7 +175,9 @@ def build_application(runtime: Runtime) -> Application:
         )
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        question = _addressed_text(update.effective_message, context.bot.username)
+        question = _addressed_text(
+            update.effective_message, context.bot.username, context.bot.id
+        )
         if question is None:
             return  # group chatter not addressed to us (slot 8 passive capture: not enabled)
         if (refusal := gate(config, update)) is not None:

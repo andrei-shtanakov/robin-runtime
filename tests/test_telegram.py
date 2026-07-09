@@ -42,8 +42,17 @@ def test_gate_passes_allowed_user(tmp_path: Path) -> None:
     assert gate(_config(tmp_path, ("42",)), _update(42)) is None
 
 
-def _message(text: str, chat_type: str) -> SimpleNamespace:
-    return SimpleNamespace(text=text, chat=SimpleNamespace(type=chat_type))
+def _message(
+    text: str, chat_type: str, reply_to_user_id: int | None = None
+) -> SimpleNamespace:
+    reply = (
+        SimpleNamespace(from_user=SimpleNamespace(id=reply_to_user_id))
+        if reply_to_user_id is not None
+        else None
+    )
+    return SimpleNamespace(
+        text=text, chat=SimpleNamespace(type=chat_type), reply_to_message=reply
+    )
 
 
 def test_dm_text_is_always_addressed() -> None:
@@ -57,3 +66,11 @@ def test_group_needs_mention() -> None:
         == "what is arbiter?"
     )
     assert _addressed_text(_message("@robin_bot", "supergroup"), "robin_bot") is None
+
+
+def test_group_reply_to_bot_is_addressed() -> None:
+    bot_id = 777
+    reply_to_bot = _message("and who consumes it?", "supergroup", reply_to_user_id=777)
+    assert _addressed_text(reply_to_bot, "robin_bot", bot_id) == "and who consumes it?"
+    reply_to_human = _message("side talk", "supergroup", reply_to_user_id=42)
+    assert _addressed_text(reply_to_human, "robin_bot", bot_id) is None
