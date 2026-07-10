@@ -65,7 +65,7 @@ class Kb:
 
         Naive linear scan (fine at this scale); a production build wants an index.
         """
-        terms = _terms(query)
+        terms = _expand(_terms(query))
         if not terms:
             return []
         scored: list[tuple[int, int, Hit]] = []  # (authority, -term_matches, hit)
@@ -135,6 +135,45 @@ def _terms(query: str) -> list[str]:
         w for w in words
         if (len(w) >= 3 or w in _SHORT_KEEP) and w not in _STOPWORDS
     ]
+
+
+# Stage-1 query expansion (proposal devtools/proposals/2026-07-10-robin-self-improvement.md):
+# the KB is mostly English, questions are often Russian — a term-based retriever needs the
+# asker's words in both languages or recall collapses to zero. Each concept group is a set of
+# stems; when a question term starts with any member, all members join the search terms
+# (matching is substring-based, so stems cover inflected forms). Deterministic and offline —
+# swap for LLM query-rewriting if retrieval outgrows term matching; keep _expand's interface.
+_CONCEPTS: tuple[tuple[str, ...], ...] = (
+    ("измен", "поменя", "chang"),
+    ("репозитор", "repo"),
+    ("владе", "хозя", "own"),
+    ("решен", "decision", "adr"),
+    ("правил", "rule"),
+    ("контракт", "contract"),
+    ("задач", "task"),
+    ("спек", "spec"),
+    ("агент", "agent"),
+    ("оркестр", "orchestr"),
+    ("знани", "knowledge", "kb"),
+    ("дайджест", "digest"),
+    ("ошибк", "баг", "bug", "error"),
+    ("тест", "test"),
+    ("вопрос", "question"),
+    ("расписан", "schedule", "cron"),
+    ("поиск", "search"),
+    ("развёртыв", "разверт", "deploy"),
+    ("настрой", "config"),
+    ("журнал", "journal", "log"),
+)
+
+
+def _expand(terms: list[str]) -> list[str]:
+    """Add cross-language stems for every concept a query term touches."""
+    extra: list[str] = []
+    for group in _CONCEPTS:
+        if any(word.startswith(member) for word in terms for member in group):
+            extra += [m for m in group if m not in terms and m not in extra]
+    return [*terms, *extra]
 
 
 def _is_scaffolding(path: str) -> bool:

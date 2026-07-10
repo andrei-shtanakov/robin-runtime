@@ -37,6 +37,45 @@ def test_grounding_matches_cyrillic_content(tmp_path) -> None:
     assert hits and hits[0].path == "note.md"
 
 
+def test_expand_bridges_ru_question_to_en_terms() -> None:
+    from robin.kb import _expand, _terms
+
+    terms = _expand(_terms("какие изменения в репозитории arbiter?"))
+    assert "chang" in terms, "RU 'изменения' must add the EN stem"
+    assert "repo" in terms, "RU 'репозитории' must add the EN stem"
+    assert "arbiter" in terms  # original terms survive
+
+
+def test_expand_bridges_en_question_to_ru_terms() -> None:
+    from robin.kb import _expand
+
+    assert "измен" in _expand(["changes"])
+    assert "решен" in _expand(["decision"])
+
+
+def test_expand_is_identity_without_known_concepts() -> None:
+    from robin.kb import _expand
+
+    assert _expand(["maestro", "nats"]) == ["maestro", "nats"]
+
+
+def test_grounding_crosses_the_language_barrier(tmp_path) -> None:
+    # The incident class: EN-only sources must ground an RU question (stage 1,
+    # proposal 2026-07-10). Before _expand this returned zero hits.
+    (tmp_path / "log.md").write_text("Recent changes to the repo layout and specs.\n")
+    kb = Kb([tmp_path])
+    hits = kb.grounding_hits("какие изменения в спеках репозитория?")
+    assert hits and hits[0].path == "log.md"
+
+
+def test_answer_rules_carry_negative_evidence_invariant() -> None:
+    from robin.agent import _ANSWER_RULES
+
+    rules = _ANSWER_RULES.lower()
+    assert "never proof of absence" in rules
+    assert "there is nothing" in rules  # the found-nothing vs is-nothing distinction
+
+
 def test_cowork_output_is_never_read() -> None:
     config = load_config()
     if not config.vault_path.is_dir():
