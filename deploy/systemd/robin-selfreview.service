@@ -1,0 +1,10 @@
+[Unit]
+Description=Robin: weekly self-review — cluster the failure log into a work order (duties.md #3)
+After=robin-mirror-sync.service
+
+[Service]
+Type=oneshot
+User=robin
+WorkingDirectory=/srv/robin/robin-runtime
+EnvironmentFile=/srv/robin/robin.env
+ExecStart=/srv/robin/robin-runtime/.venv/bin/python -m robin.selfreview

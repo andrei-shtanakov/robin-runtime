@@ -1,0 +1,9 @@
+[Unit]
+Description=Robin: weekly self-review, Friday 18:00 (duties.md #3 cadence)
+
+[Timer]
+OnCalendar=Fri *-*-* 18:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
