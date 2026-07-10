@@ -1,8 +1,10 @@
-"""Change-history retriever: git log over the read-only mirrors + vault journals.
+"""Change-history retriever: git log + uncommitted state over the read-only mirrors,
+plus vault journals.
 
 Grounds "what changed today / this week / since <date>?" questions. Read-only by
-construction: `git -C <repo> log` never touches the index or working tree. Results keep the
-Hit/citation contract (path=repo@sha) so build_prompt() and the answer rules are unchanged.
+construction: `git log` / `git status --porcelain` never touch the index or working tree.
+Results keep the Hit/citation contract (path=repo@sha, repo@working-tree) so build_prompt()
+and the answer rules are unchanged.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from .config import RobinConfig
 from .kb import Hit
 
 MAX_COMMITS_PER_REPO = 30
+MAX_DIRTY_FILES = 20  # per repo; overflow is flagged, never silently dropped
 _GIT_TIMEOUT_S = 30
 
 
@@ -119,6 +122,47 @@ def git_log(repo, since: datetime, until: datetime | None) -> list[Commit]:
     return commits
 
 
+def _status_path(entry: str) -> str:
+    """Path from one `status --porcelain` line ('XY path' or 'XY old -> new')."""
+    path = entry[3:]
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    return path
+
+
+def uncommitted(config: RobinConfig, *, max_files: int = MAX_DIRTY_FILES) -> list[Hit]:
+    """Uncommitted work in each mirror — `git log` never sees it, so 'what changed
+    today?' answered from commits alone lies by omission (proposal 2026-07-10 §3).
+    Read-only: `git status --porcelain` touches neither index nor working tree.
+    Bare mirrors have no working tree — git fails there and the repo is skipped."""
+    hits: list[Hit] = []
+    for repo in [config.vault_path, *config.repo_paths]:
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(repo), "status", "--porcelain"],
+                capture_output=True, text=True, timeout=_GIT_TIMEOUT_S, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if proc.returncode != 0:
+            continue
+        entries = proc.stdout.splitlines()
+        if not entries:
+            continue
+        shown = ", ".join(_status_path(e) for e in entries[:max_files])
+        # The truncation flag precedes the list so the 240-char cap can never eat it
+        # (an unflagged partial list is the negative-evidence bug in miniature).
+        if len(entries) > max_files:
+            text = (
+                f"{len(entries)} uncommitted file(s), showing first {max_files} "
+                f"(truncated): {shown}"
+            )
+        else:
+            text = f"{len(entries)} uncommitted file(s): {shown}"
+        hits.append(Hit(f"{repo.name}@working-tree", 1, text[:240]))
+    return hits
+
+
 def journal_entries(config: RobinConfig, period: Period, *, max_hits: int = 10) -> list[Hit]:
     """Vault journal lines dated inside the period (derived/journal/* uses date headings)."""
     journal_dir = config.vault_path / "derived" / "journal"
@@ -148,7 +192,8 @@ def journal_entries(config: RobinConfig, period: Period, *, max_hits: int = 10) 
 
 
 def collect_changes(config: RobinConfig, period: Period, *, max_hits: int = 40) -> list[Hit]:
-    """Change evidence for the period: commits per mirror (as repo@sha hits) + journals."""
+    """Change evidence for the period: commits per mirror (as repo@sha hits) +
+    uncommitted working-tree state + journals."""
     hits: list[Hit] = []
     repos = [config.vault_path, *config.repo_paths]
     for repo in repos:
@@ -157,10 +202,20 @@ def collect_changes(config: RobinConfig, period: Period, *, max_hits: int = 40) 
             if commit.stat:
                 text += f" ({commit.stat})"
             hits.append(Hit(f"{repo.name}@{commit.sha}", 1, text[:240]))
-    if not hits:
+    dirty = uncommitted(config)
+    if not hits and not dirty:
+        # Negative evidence, spelled out for the answer layer: this is a statement
+        # about what the mirrors show, not proof that nothing happened.
         hits.append(
-            Hit("(no-commits)", 1, f"No commits found in any mirror for period: {period.label}")
+            Hit(
+                "(no-changes-found)",
+                1,
+                f"No commits and no uncommitted files found in any mirror for period: "
+                f"{period.label}. Absence of evidence in the mirrors — not proof that "
+                f"nothing changed elsewhere.",
+            )
         )
+    hits += dirty
     hits += journal_entries(config, period)
     return hits[:max_hits]
 

@@ -115,10 +115,50 @@ def test_collect_changes_cites_repo_at_sha(tmp_path: Path) -> None:
     assert any("routing fix" in hit.text for hit in hits)
 
 
-def test_collect_changes_reports_empty_window(tmp_path: Path) -> None:
+def test_collect_changes_reports_empty_window_as_negative_evidence(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     _make_repo(vault, [("2026-01-01T10:00:00+00:00", "ancient")])
     config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
     period = Period(since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test")
     hits = collect_changes(config, period)
-    assert hits[0].path == "(no-commits)"
+    assert hits[0].path == "(no-changes-found)"
+    assert "not proof" in hits[0].text  # negative-evidence wording, not a bare "nothing"
+
+
+def test_uncommitted_files_are_seen(tmp_path: Path) -> None:
+    # The incident class (proposal 2026-07-10 §3): yesterday's work may be uncommitted —
+    # git log alone answers "no changes" and lies by omission.
+    vault = tmp_path / "vault"
+    _make_repo(vault, [("2026-01-01T10:00:00+00:00", "ancient")])
+    (vault / "draft.md").write_text("work in progress")
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    period = Period(since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test")
+    hits = collect_changes(config, period)
+    paths = [hit.path for hit in hits]
+    assert "vault@working-tree" in paths
+    assert "(no-changes-found)" not in paths  # dirty tree => the window is NOT empty
+    dirty = next(hit for hit in hits if hit.path == "vault@working-tree")
+    assert "draft.md" in dirty.text and "1 uncommitted" in dirty.text
+
+
+def test_uncommitted_truncation_is_flagged(tmp_path: Path) -> None:
+    from robin.changes import uncommitted
+
+    vault = tmp_path / "vault"
+    _make_repo(vault, [("2026-01-01T10:00:00+00:00", "ancient")])
+    for index in range(25):
+        (vault / f"wip{index:02}.md").write_text("x")
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    hits = uncommitted(config)
+    assert len(hits) == 1
+    assert "25 uncommitted" in hits[0].text
+    assert "truncated" in hits[0].text  # overflow is flagged, never silent
+
+
+def test_uncommitted_skips_non_repos(tmp_path: Path) -> None:
+    from robin.changes import uncommitted
+
+    config = RobinConfig(
+        vault_path=tmp_path / "not-a-repo", repo_paths=[], var_dir=tmp_path / "var"
+    )
+    assert uncommitted(config) == []
