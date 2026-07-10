@@ -34,6 +34,7 @@ all_ai_orchestrators/          (VPS: /srv/robin/ + mirrors/)
 | `src/robin/guard.py` | §7 daily budget cap, per-user rate limit, `/cost` report |
 | `src/robin/memory.py` | per-chat rolling window, last N turns (slots 12–14) |
 | `src/robin/gaps.py` | stage-2 failure log: zero-retrieval / reformulation / `/gap` / 👎 → `var/gaps.jsonl` |
+| `src/robin/selfreview.py` | weekly self-review (duties.md #3): failure clusters → work order → maintainer DM |
 | `src/robin/voice.py` | STT/TTS behind protocols; OpenAI default (slot 21: transcribe first) |
 | `src/robin/fmt.py` | §6.7 HTML escaping + 4096 chunking for Telegram |
 | `src/robin/liveness.py` | §7 alert when the newest digest is older than cadence + grace |
