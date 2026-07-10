@@ -18,10 +18,11 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    MessageReactionHandler,
     filters,
 )
 
-from .. import fmt, guard, memory
+from .. import fmt, gaps, guard, memory
 from ..agent import Answer, ask
 from ..changes import parse_period
 from ..config import RobinConfig, load_config
@@ -37,7 +38,8 @@ _HELP = (
     "• what is the arbiter repo for?\n"
     "• что изменилось за неделю?\n"
     "• /digest today | week | since 2026-07-01\n"
-    "• /cost — today's spend and quotas"
+    "• /cost — today's spend and quotas\n"
+    "• /gap <comment> or a 👎 reaction — flag a bad answer (feeds my self-review)"
 )
 
 
@@ -127,12 +129,25 @@ async def _answer(update: Update, runtime: Runtime, question: str, *, voice_repl
             config,
             surface="telegram",
             requester=_requester(update),
+            chat=chat_id,
             history=history,
         )
     except Exception:
         logger.exception("ask() failed")
         await message.reply_text("Something went wrong while composing the answer — logged.")
         return
+    # Stage 2: a quick overlapping re-ask marks the PREVIOUS answer as a suspected failure.
+    previous = memory.last_user_turn(config, "telegram", chat_id)
+    if previous is not None and gaps.is_reformulation(previous[0], previous[1], question):
+        gaps.log_gap(
+            config,
+            surface="telegram",
+            chat=chat_id,
+            requester=_requester(update),
+            question=previous[0],
+            fail_signal="reformulation",
+            comment=f"re-asked as: {question[:200]}",
+        )
     memory.append(config, "telegram", chat_id, "user", question)
     memory.append(config, "telegram", chat_id, "robin", answer.text or "")
     await _send_html(message, fmt.render_answer(answer))
@@ -173,6 +188,47 @@ def build_application(runtime: Runtime) -> Application:
             return
         await _answer(
             update, runtime, f"What changed {phrase}? Summarize per repo.", voice_reply=False
+        )
+
+    async def cmd_gap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        # Stage 2 explicit feedback. Like /cost: allowlist-only but exempt from the budget
+        # gate — flagging a bad answer must work even when the day's budget is spent.
+        if not _allowed(config, update):
+            return
+        chat_id = str(update.effective_chat.id)
+        previous = memory.last_user_turn(config, "telegram", chat_id)
+        gaps.log_gap(
+            config,
+            surface="telegram",
+            chat=chat_id,
+            requester=_requester(update),
+            question=previous[0] if previous else None,
+            fail_signal="gap_command",
+            comment=" ".join(context.args) if context.args else None,
+        )
+        await update.effective_message.reply_text(
+            "Logged — thanks. This feeds the weekly self-review."
+        )
+
+    async def on_reaction(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        reaction = update.message_reaction
+        if reaction is None or not _allowed(config, update):
+            return
+        emojis = {
+            getattr(item, "emoji", None) for item in (reaction.new_reaction or ())
+        }
+        if "👎" not in emojis:
+            return
+        chat_id = str(reaction.chat.id)
+        previous = memory.last_user_turn(config, "telegram", chat_id)
+        gaps.log_gap(
+            config,
+            surface="telegram",
+            chat=chat_id,
+            requester=_requester(update),
+            question=previous[0] if previous else None,
+            fail_signal="thumbs_down",
+            comment=f"message_id={reaction.message_id}",
         )
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -216,6 +272,8 @@ def build_application(runtime: Runtime) -> Application:
     app.add_handler(CommandHandler(["start", "help"], cmd_start))
     app.add_handler(CommandHandler("cost", cmd_cost))
     app.add_handler(CommandHandler("digest", cmd_digest))
+    app.add_handler(CommandHandler("gap", cmd_gap))
+    app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice))
     return app
