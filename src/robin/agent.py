@@ -57,15 +57,32 @@ def ask(
     *,
     surface: str = "cli",
     requester: str | None = None,
+    chat: str | None = None,
     history: list[Turn] | None = None,
     extra_sources: list[Hit] | None = None,
     retrieve_only: bool = False,
 ) -> Answer:
     """Retrieve ranked grounding and (optionally) compose a cited answer."""
+    from . import gaps
+    from .changes import parse_period
+
     config = config or load_config()
     sources = _retrieve(question, config)
     if extra_sources:
         sources = [*extra_sources, *sources]
+    if gaps.is_zero_retrieval(sources):
+        # Stage 2: zero positive evidence is a suspected failure — log it for the weekly
+        # self-review, regardless of how gracefully the answer layer escalates.
+        gaps.log_gap(
+            config,
+            surface=surface,
+            chat=chat,
+            requester=requester,
+            question=question,
+            retrieval_hits=0,
+            answer_class="temporal" if parse_period(question, tz=config.tz) else "kb",
+            fail_signal="zero_retrieval",
+        )
     text: str | None = None
     cost: float | None = None
     started = time.monotonic()

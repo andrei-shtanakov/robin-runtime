@@ -39,6 +39,25 @@ def recent(config: RobinConfig, surface: str, chat_id: str, n: int | None = None
     return turns[-n:]
 
 
+def last_user_turn(
+    config: RobinConfig, surface: str, chat_id: str
+) -> tuple[str, int] | None:
+    """(text, ts) of the chat's most recent user turn — the reformulation detector
+    (stage 2, gaps.py) compares the incoming question against it."""
+    path = _chat_file(config, surface, chat_id)
+    if not path.is_file():
+        return None
+    result: tuple[str, int] | None = None
+    for line in path.read_text(errors="ignore").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("role") == "user" and isinstance(record.get("text"), str):
+            result = (record["text"], int(record.get("ts", 0)))
+    return result
+
+
 def append(config: RobinConfig, surface: str, chat_id: str, role: str, text: str) -> None:
     """Record one turn (truncated — the window is continuity context, not an archive)."""
     path = _chat_file(config, surface, chat_id)
