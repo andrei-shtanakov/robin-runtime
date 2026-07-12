@@ -1,0 +1,8 @@
+# CODEOWNERS — RD-007 v1 acceptance (learning-through-governance).
+# Governed paths: modified only via reviewed PR; runtime never writes them.
+# Design: atp-platform docs/2026-07-12-rd-007-learning-event-design.md §4.
+
+/src/robin/gaps.py             @andrei-shtanakov
+/src/robin/selfreview.py       @andrei-shtanakov
+/src/robin/learning_events.py  @andrei-shtanakov
+/contracts/                    @andrei-shtanakov

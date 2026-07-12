@@ -69,15 +69,19 @@ def _make_repo(path: Path, commits: list[tuple[str, str]]) -> None:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
     env = {
         **os.environ,
-        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
     }
     for index, (date, subject) in enumerate(commits):
         (path / f"f{index}.txt").write_text(subject)
         subprocess.run(["git", "-C", str(path), "add", "."], check=True, env=env)
         stamp_env = {**env, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
         subprocess.run(
-            ["git", "-C", str(path), "commit", "-q", "-m", subject], check=True, env=stamp_env
+            ["git", "-C", str(path), "commit", "-q", "-m", subject],
+            check=True,
+            env=stamp_env,
         )
 
 
@@ -107,7 +111,9 @@ def test_collect_changes_cites_repo_at_sha(tmp_path: Path) -> None:
     repo = tmp_path / "arbiter"
     _make_repo(repo, [("2026-07-08T11:00:00+00:00", "routing fix")])
     config = RobinConfig(vault_path=vault, repo_paths=[repo], var_dir=tmp_path / "var")
-    period = Period(since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
     hits = collect_changes(config, period)
     paths = [hit.path for hit in hits]
     assert any(p.startswith("vault@") for p in paths)
@@ -115,14 +121,20 @@ def test_collect_changes_cites_repo_at_sha(tmp_path: Path) -> None:
     assert any("routing fix" in hit.text for hit in hits)
 
 
-def test_collect_changes_reports_empty_window_as_negative_evidence(tmp_path: Path) -> None:
+def test_collect_changes_reports_empty_window_as_negative_evidence(
+    tmp_path: Path,
+) -> None:
     vault = tmp_path / "vault"
     _make_repo(vault, [("2026-01-01T10:00:00+00:00", "ancient")])
     config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
-    period = Period(since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
     hits = collect_changes(config, period)
     assert hits[0].path == "(no-changes-found)"
-    assert "not proof" in hits[0].text  # negative-evidence wording, not a bare "nothing"
+    assert (
+        "not proof" in hits[0].text
+    )  # negative-evidence wording, not a bare "nothing"
 
 
 def test_uncommitted_files_are_seen(tmp_path: Path) -> None:
@@ -132,7 +144,9 @@ def test_uncommitted_files_are_seen(tmp_path: Path) -> None:
     _make_repo(vault, [("2026-01-01T10:00:00+00:00", "ancient")])
     (vault / "draft.md").write_text("work in progress")
     config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
-    period = Period(since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
     hits = collect_changes(config, period)
     paths = [hit.path for hit in hits]
     assert "vault@working-tree" in paths

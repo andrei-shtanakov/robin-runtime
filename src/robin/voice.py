@@ -49,7 +49,9 @@ class OpenAiStt:
         ext = _EXT_BY_MIME.get(mime.split(";")[0].strip().lower(), "ogg")
         buffer = io.BytesIO(audio)
         buffer.name = f"voice.{ext}"  # the API infers the codec from the filename
-        result = self._client.audio.transcriptions.create(model=self._model, file=buffer)
+        result = self._client.audio.transcriptions.create(
+            model=self._model, file=buffer
+        )
         return result.text.strip()
 
 

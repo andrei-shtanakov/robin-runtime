@@ -46,7 +46,9 @@ def _today_records(log_path: Path, tz: str, now: datetime | None = None) -> list
     return records
 
 
-def spent_today(log_path: Path, *, tz: str = "UTC", now: datetime | None = None) -> float:
+def spent_today(
+    log_path: Path, *, tz: str = "UTC", now: datetime | None = None
+) -> float:
     """Total USD spent today (sum of logged cost_usd)."""
     return sum(
         record["cost_usd"]
@@ -60,7 +62,9 @@ def requests_today(
 ) -> int:
     """How many interactions this requester logged today."""
     return sum(
-        1 for record in _today_records(log_path, tz, now) if record.get("requester") == requester
+        1
+        for record in _today_records(log_path, tz, now)
+        if record.get("requester") == requester
     )
 
 
@@ -71,7 +75,10 @@ def check(config: RobinConfig, requester: str, *, now: datetime | None = None) -
         raise BudgetExceeded(
             f"daily budget ${config.daily_budget_usd:.2f} reached; resets at local midnight"
         )
-    if requests_today(log_path, requester, tz=config.tz, now=now) >= config.user_daily_msgs:
+    if (
+        requests_today(log_path, requester, tz=config.tz, now=now)
+        >= config.user_daily_msgs
+    ):
         raise RateLimited(f"daily quota of {config.user_daily_msgs} messages reached")
 
 

@@ -123,7 +123,9 @@ def _retrieve(question: str, config: RobinConfig) -> list[Hit]:
     ]
 
 
-def build_prompt(question: str, sources: list[Hit], history: list[Turn] | None = None) -> str:
+def build_prompt(
+    question: str, sources: list[Hit], history: list[Turn] | None = None
+) -> str:
     """Assemble the grounded user prompt from ranked sources (testable without the SDK)."""
     lines: list[str] = []
     if history:

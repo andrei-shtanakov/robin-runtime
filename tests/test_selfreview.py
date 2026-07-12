@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from robin import gaps, selfreview
 from robin.config import RobinConfig
 
 NOW = datetime(2026, 7, 10, 18, 0, tzinfo=timezone.utc)
+
+# log_gap stamps real wall-clock time; a window anchored at a FIXED past date
+# silently empties once the calendar moves past it (this bit on 2026-07-12).
+LIVE_NOW = datetime.now(timezone.utc) + timedelta(hours=1)
 
 
 def _config(tmp_path: Path) -> RobinConfig:
@@ -107,7 +111,7 @@ def test_end_to_end_from_gaps_log(tmp_path: Path) -> None:
         fail_signal="zero_retrieval",
         answer_class="temporal",
     )
-    since_ts, until_ts = selfreview.window(config, now=NOW)
+    since_ts, until_ts = selfreview.window(config, now=LIVE_NOW)
     records = selfreview.in_window(gaps.read_gaps(config), since_ts, until_ts)
     clusters = selfreview.cluster(records)
     text = selfreview.render(

@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import fmt
+from . import fmt, learning_events
 from .config import RobinConfig, load_config
 from .gaps import read_gaps
 from .log import setup_logging
@@ -199,6 +199,11 @@ def run() -> None:
         clusters, total=len(records), since_ts=since_ts, until_ts=until_ts, tz=config.tz
     )
     path = persist(config, text)
+    # RD-007 M1b: every windowed gap becomes an observational LearningEvent
+    # in robin's own store — graduation to durable artifacts is PR-only.
+    if records:
+        events_path = learning_events.emit_events(config, records)
+        logger.info("learning events emitted: %s (%d)", events_path, len(records))
     logger.info(
         "self-review persisted: %s (%d gaps, %d clusters)",
         path,

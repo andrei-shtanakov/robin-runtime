@@ -22,7 +22,9 @@ def test_render_answer_escapes_before_adding_markup() -> None:
     )
     html = render_answer(answer)
     assert "&lt;" in html and "&amp;" in html
-    assert "<code>a/&lt;file&gt;.md:3</code>" in html  # our markup survives, payload escaped
+    assert (
+        "<code>a/&lt;file&gt;.md:3</code>" in html
+    )  # our markup survives, payload escaped
     assert "<b>Sources</b>" in html
 
 

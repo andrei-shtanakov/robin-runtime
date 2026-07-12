@@ -57,7 +57,9 @@ def window(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pe
     return Period(since=min(since, now), until=None, label=f"{kind} digest window")
 
 
-def compose(config: RobinConfig, kind: str, *, now: datetime | None = None) -> tuple[str, list[Hit], float | None]:
+def compose(
+    config: RobinConfig, kind: str, *, now: datetime | None = None
+) -> tuple[str, list[Hit], float | None]:
     """Compose the digest text via the standard grounded pipeline."""
     period = window(config, kind, now=now)
     sources = collect_changes(config, period, max_hits=60)
@@ -65,7 +67,9 @@ def compose(config: RobinConfig, kind: str, *, now: datetime | None = None) -> t
     return text, sources, cost
 
 
-def persist(config: RobinConfig, kind: str, text: str, *, now: datetime | None = None) -> Path:
+def persist(
+    config: RobinConfig, kind: str, text: str, *, now: datetime | None = None
+) -> Path:
     """var/digests/YYYY-MM-DD-<kind>.md + refresh the marker (liveness reads its mtime)."""
     zone = ZoneInfo(config.tz)
     now = now.astimezone(zone) if now else datetime.now(zone)
@@ -100,7 +104,13 @@ async def post(config: RobinConfig, text: str, kind: str) -> None:
 
 def _log_failure(config: RobinConfig, kind: str, error: str) -> None:
     config.var_dir.mkdir(parents=True, exist_ok=True)
-    record = {"ts": int(time.time()), "surface": "digest", "kind": kind, "ok": False, "error": error}
+    record = {
+        "ts": int(time.time()),
+        "surface": "digest",
+        "kind": kind,
+        "ok": False,
+        "error": error,
+    }
     with (config.var_dir / "interactions.jsonl").open("a") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     logger.error("digest %s: %s", kind, error)
@@ -115,8 +125,12 @@ def run(kind: str) -> None:
     # digest runs are interactions too (§7 cost observability)
     config.var_dir.mkdir(parents=True, exist_ok=True)
     record = {
-        "ts": int(time.time()), "surface": "digest", "kind": kind,
-        "n_sources": len(sources), "cost_usd": cost, "ok": True,
+        "ts": int(time.time()),
+        "surface": "digest",
+        "kind": kind,
+        "n_sources": len(sources),
+        "cost_usd": cost,
+        "ok": True,
     }
     with (config.var_dir / "interactions.jsonl").open("a") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")

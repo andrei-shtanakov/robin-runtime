@@ -10,12 +10,16 @@ from robin.config import RobinConfig
 
 
 def _update(user_id: int = 42, username: str | None = "alice") -> SimpleNamespace:
-    return SimpleNamespace(effective_user=SimpleNamespace(id=user_id, username=username))
+    return SimpleNamespace(
+        effective_user=SimpleNamespace(id=user_id, username=username)
+    )
 
 
 def _config(tmp_path: Path, allowed: tuple[str, ...]) -> RobinConfig:
     return RobinConfig(
-        vault_path=tmp_path, repo_paths=[], var_dir=tmp_path / "var",
+        vault_path=tmp_path,
+        repo_paths=[],
+        var_dir=tmp_path / "var",
         allowed_dm_users=allowed,
     )
 
@@ -62,7 +66,9 @@ def test_dm_text_is_always_addressed() -> None:
 def test_group_needs_mention() -> None:
     assert _addressed_text(_message("hello", "supergroup"), "robin_bot") is None
     assert (
-        _addressed_text(_message("@robin_bot what is arbiter?", "supergroup"), "robin_bot")
+        _addressed_text(
+            _message("@robin_bot what is arbiter?", "supergroup"), "robin_bot"
+        )
         == "what is arbiter?"
     )
     assert _addressed_text(_message("@robin_bot", "supergroup"), "robin_bot") is None

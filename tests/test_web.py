@@ -63,10 +63,15 @@ def test_ask_requires_token(client: TestClient) -> None:
 def test_missing_server_token_is_503(client: TestClient, monkeypatch) -> None:
     config = web._config()
     monkeypatch.setattr(
-        web, "_config",
-        lambda: RobinConfig(vault_path=config.vault_path, repo_paths=[], web_token=None),
+        web,
+        "_config",
+        lambda: RobinConfig(
+            vault_path=config.vault_path, repo_paths=[], web_token=None
+        ),
     )
-    assert client.post("/api/ask", json={"text": "hi"}, headers=_auth()).status_code == 503
+    assert (
+        client.post("/api/ask", json={"text": "hi"}, headers=_auth()).status_code == 503
+    )
 
 
 def test_ask_returns_rendered_answer(client: TestClient) -> None:

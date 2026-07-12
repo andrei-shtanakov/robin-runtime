@@ -43,4 +43,6 @@ def test_hostile_chat_id_stays_in_var(tmp_path: Path) -> None:
     append(config, "web", "../../etc/passwd", "user", "hi")
     files = list((tmp_path / "var" / "chats").iterdir())
     assert len(files) == 1
-    assert ".." not in files[0].name and "/" not in files[0].name.replace(files[0].name, "")
+    assert ".." not in files[0].name and "/" not in files[0].name.replace(
+        files[0].name, ""
+    )
