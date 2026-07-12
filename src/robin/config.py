@@ -16,7 +16,13 @@ _ECOSYSTEM = Path(__file__).resolve().parents[3]  # .../all_ai_orchestrators
 _DEFAULT_VAULT = _ECOSYSTEM / "prograph-vault"
 _DEFAULT_VAR = Path(__file__).resolve().parents[2] / "var"
 _ECOSYSTEM_REPOS = (
-    "atp-platform", "Maestro", "arbiter", "spec-runner", "deployer", "dispatcher", "steward",
+    "atp-platform",
+    "Maestro",
+    "arbiter",
+    "spec-runner",
+    "deployer",
+    "dispatcher",
+    "steward",
 )
 
 
@@ -70,7 +76,11 @@ def load_config() -> RobinConfig:
     vault = Path(os.environ.get("ROBIN_VAULT", str(_DEFAULT_VAULT))).resolve()
     base = vault.parent
     repos = [base / name for name in _ECOSYSTEM_REPOS if (base / name).is_dir()]
-    users = tuple(u.strip() for u in os.environ.get("ROBIN_ALLOWED_DM", "").split(",") if u.strip())
+    users = tuple(
+        u.strip()
+        for u in os.environ.get("ROBIN_ALLOWED_DM", "").split(",")
+        if u.strip()
+    )
     return RobinConfig(
         vault_path=vault,
         repo_paths=repos,

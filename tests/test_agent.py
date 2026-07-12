@@ -28,7 +28,9 @@ def test_grounding_ranks_authoritative_and_excludes_scaffolding() -> None:
 
 
 def test_build_prompt_includes_sources_and_question() -> None:
-    sources = [Hit("authored/decisions/adr.md", 22, "atp-platform/method/agents-catalog.toml")]
+    sources = [
+        Hit("authored/decisions/adr.md", 22, "atp-platform/method/agents-catalog.toml")
+    ]
     prompt = build_prompt("who owns the catalog?", sources)
     assert "authored/decisions/adr.md:22" in prompt
     assert "who owns the catalog?" in prompt

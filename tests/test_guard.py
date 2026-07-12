@@ -60,8 +60,11 @@ def test_requests_today_counts_per_requester(tmp_path: Path) -> None:
 
 def _config(tmp_path: Path, **overrides) -> RobinConfig:
     defaults = dict(
-        vault_path=tmp_path, repo_paths=[], var_dir=tmp_path,
-        daily_budget_usd=1.0, user_daily_msgs=2,
+        vault_path=tmp_path,
+        repo_paths=[],
+        var_dir=tmp_path,
+        daily_budget_usd=1.0,
+        user_daily_msgs=2,
     )
     return RobinConfig(**{**defaults, **overrides})
 

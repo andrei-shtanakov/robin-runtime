@@ -35,22 +35,48 @@ class Period:
 # Ordered: more specific patterns first. RU + EN; RU stems cover inflected forms
 # («сегодняшних», «вчерашние», «недавние»).
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\b(?:позавчера|day before yesterday)\b", re.I), "day_before_yesterday"),
+    (
+        re.compile(r"\b(?:позавчера|day before yesterday)\b", re.I),
+        "day_before_yesterday",
+    ),
     (re.compile(r"\b(?:вчера(?:шн\w*)?|yesterday)\b", re.I), "yesterday"),
     (re.compile(r"\b(?:сегодня(?:шн\w*)?|за день|today)\b", re.I), "today"),
-    (re.compile(r"\b(?:на этой неделе|за неделю|this week|за последнюю неделю|past week|last 7 days)\b", re.I), "week"),
+    (
+        re.compile(
+            r"\b(?:на этой неделе|за неделю|this week|за последнюю неделю|past week|last 7 days)\b",
+            re.I,
+        ),
+        "week",
+    ),
     (re.compile(r"\b(?:на прошлой неделе|last week)\b", re.I), "last_week"),
-    (re.compile(r"\b(?:за месяц|в этом месяце|this month|за последний месяц|past month)\b", re.I), "month"),
-    (re.compile(r"\bпоследни[еихй]\s+(\d{1,3})\s+(?:дн|день|дня|дней)", re.I), "n_days"),
+    (
+        re.compile(
+            r"\b(?:за месяц|в этом месяце|this month|за последний месяц|past month)\b",
+            re.I,
+        ),
+        "month",
+    ),
+    (
+        re.compile(r"\bпоследни[еихй]\s+(\d{1,3})\s+(?:дн|день|дня|дней)", re.I),
+        "n_days",
+    ),
     (re.compile(r"\bза\s+(\d{1,3})\s+(?:дн|день|дня|дней)", re.I), "n_days"),
     (re.compile(r"\b(?:last|past)\s+(\d{1,3})\s+days?\b", re.I), "n_days"),
     (re.compile(r"\b(?:с|since|from)\s+(\d{4}-\d{2}-\d{2})\b", re.I), "since_date"),
     # vague recency LAST — must not shadow the specific windows above
-    (re.compile(r"\b(?:что нового|недавн\w*|в последнее время|за последние дни|recently|what.s new|latest changes)\b", re.I), "week"),
+    (
+        re.compile(
+            r"\b(?:что нового|недавн\w*|в последнее время|за последние дни|recently|what.s new|latest changes)\b",
+            re.I,
+        ),
+        "week",
+    ),
 ]
 
 
-def parse_period(text: str, *, tz: str = "UTC", now: datetime | None = None) -> Period | None:
+def parse_period(
+    text: str, *, tz: str = "UTC", now: datetime | None = None
+) -> Period | None:
     """Detect a change-window phrase in the question; None => not a period question."""
     zone = ZoneInfo(tz)
     now = now.astimezone(zone) if now else datetime.now(zone)
@@ -64,7 +90,11 @@ def parse_period(text: str, *, tz: str = "UTC", now: datetime | None = None) -> 
         if kind == "yesterday":
             return Period(midnight - timedelta(days=1), midnight, "yesterday")
         if kind == "day_before_yesterday":
-            return Period(midnight - timedelta(days=2), midnight - timedelta(days=1), "day before yesterday")
+            return Period(
+                midnight - timedelta(days=2),
+                midnight - timedelta(days=1),
+                "day before yesterday",
+            )
         if kind == "week":
             return Period(now - timedelta(days=7), None, "past week")
         if kind == "last_week":
@@ -93,8 +123,14 @@ class Commit:
 def git_log(repo, since: datetime, until: datetime | None) -> list[Commit]:
     """Read-only `git log` over one mirror; empty list when git fails or repo is not one."""
     args = [
-        "git", "-C", str(repo), "log", "--no-merges", "--date=iso-strict",
-        f"--since={since.isoformat()}", "--shortstat",
+        "git",
+        "-C",
+        str(repo),
+        "log",
+        "--no-merges",
+        "--date=iso-strict",
+        f"--since={since.isoformat()}",
+        "--shortstat",
         "--pretty=format:%x1e%h%x1f%ad%x1f%an%x1f%s",
         f"--max-count={MAX_COMMITS_PER_REPO}",
     ]
@@ -140,7 +176,10 @@ def uncommitted(config: RobinConfig, *, max_files: int = MAX_DIRTY_FILES) -> lis
         try:
             proc = subprocess.run(
                 ["git", "-C", str(repo), "status", "--porcelain"],
-                capture_output=True, text=True, timeout=_GIT_TIMEOUT_S, check=False,
+                capture_output=True,
+                text=True,
+                timeout=_GIT_TIMEOUT_S,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             continue
@@ -163,7 +202,9 @@ def uncommitted(config: RobinConfig, *, max_files: int = MAX_DIRTY_FILES) -> lis
     return hits
 
 
-def journal_entries(config: RobinConfig, period: Period, *, max_hits: int = 10) -> list[Hit]:
+def journal_entries(
+    config: RobinConfig, period: Period, *, max_hits: int = 10
+) -> list[Hit]:
     """Vault journal lines dated inside the period (derived/journal/* uses date headings)."""
     journal_dir = config.vault_path / "derived" / "journal"
     if not journal_dir.is_dir():
@@ -191,7 +232,9 @@ def journal_entries(config: RobinConfig, period: Period, *, max_hits: int = 10) 
     return hits
 
 
-def collect_changes(config: RobinConfig, period: Period, *, max_hits: int = 40) -> list[Hit]:
+def collect_changes(
+    config: RobinConfig, period: Period, *, max_hits: int = 40
+) -> list[Hit]:
     """Change evidence for the period: commits per mirror (as repo@sha hits) +
     uncommitted working-tree state + journals."""
     hits: list[Hit] = []

@@ -14,8 +14,19 @@ from pathlib import Path
 
 TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".toml", ".sql", ".txt", ".json", ".py", ".rs"}
 SKIP_DIRS = {
-    ".git", ".venv", "node_modules", "__pycache__", ".ruff_cache", ".pytest_cache",
-    ".mypy_cache", ".hypothesis", "target", "build", "dist", ".worktrees", ".obsidian",
+    ".git",
+    ".venv",
+    "node_modules",
+    "__pycache__",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".hypothesis",
+    "target",
+    "build",
+    "dist",
+    ".worktrees",
+    ".obsidian",
     "_cowork_output",  # runtime MUST NOT read dev-scratch (ROBIN-SPEC; robin/duties.md)
 }
 MAX_FILE_BYTES = 512 * 1024
@@ -115,14 +126,76 @@ def _is_within(candidate: Path, root: Path) -> bool:
 
 
 _STOPWORDS = {
-    "the", "a", "an", "of", "to", "in", "is", "are", "which", "who", "what", "where", "when",
-    "how", "and", "or", "for", "on", "by", "with", "does", "do", "own", "owns", "it", "its",
-    "this", "that", "was", "were", "has", "have",
+    "the",
+    "a",
+    "an",
+    "of",
+    "to",
+    "in",
+    "is",
+    "are",
+    "which",
+    "who",
+    "what",
+    "where",
+    "when",
+    "how",
+    "and",
+    "or",
+    "for",
+    "on",
+    "by",
+    "with",
+    "does",
+    "do",
+    "own",
+    "owns",
+    "it",
+    "its",
+    "this",
+    "that",
+    "was",
+    "were",
+    "has",
+    "have",
     # RU question scaffolding — never useful as search terms
-    "что", "как", "где", "когда", "кто", "чем", "зачем", "почему", "или", "это", "эта",
-    "этот", "есть", "был", "была", "были", "было", "для", "про", "при", "нужен", "нужна",
-    "нужно", "можно", "может", "можешь", "такое", "такой", "расскажи", "скажи", "покажи",
-    "какой", "какая", "какие", "чего", "него", "неё",
+    "что",
+    "как",
+    "где",
+    "когда",
+    "кто",
+    "чем",
+    "зачем",
+    "почему",
+    "или",
+    "это",
+    "эта",
+    "этот",
+    "есть",
+    "был",
+    "была",
+    "были",
+    "было",
+    "для",
+    "про",
+    "при",
+    "нужен",
+    "нужна",
+    "нужно",
+    "можно",
+    "может",
+    "можешь",
+    "такое",
+    "такой",
+    "расскажи",
+    "скажи",
+    "покажи",
+    "какой",
+    "какая",
+    "какие",
+    "чего",
+    "него",
+    "неё",
 }
 
 # Short tokens are dropped (len < 3) except these load-bearing acronyms.
@@ -132,8 +205,7 @@ _SHORT_KEEP = {"kb", "ci", "db", "ui", "api", "adr"}
 def _terms(query: str) -> list[str]:
     words = re.findall(r"[A-Za-zА-Яа-яЁё0-9_.\-]+", query.lower())
     return [
-        w for w in words
-        if (len(w) >= 3 or w in _SHORT_KEEP) and w not in _STOPWORDS
+        w for w in words if (len(w) >= 3 or w in _SHORT_KEEP) and w not in _STOPWORDS
     ]
 
 
@@ -188,7 +260,11 @@ def _authority(path: str) -> int:
         return 0
     if "/spec/" in p or p.endswith("-spec.md"):
         return 0
-    if p == "CLAUDE.md" or p.endswith("/CLAUDE.md") or p.startswith("derived/contracts/"):
+    if (
+        p == "CLAUDE.md"
+        or p.endswith("/CLAUDE.md")
+        or p.startswith("derived/contracts/")
+    ):
         return 1
     if p.startswith("authored/"):
         return 2

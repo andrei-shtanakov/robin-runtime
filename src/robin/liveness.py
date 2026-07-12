@@ -36,7 +36,8 @@ def stale_kinds(config: RobinConfig, *, now: float | None = None) -> list[str]:
 
 async def alert(config: RobinConfig, kinds: list[str]) -> None:
     text = (
-        "⚠️ Robin liveness: digest(s) overdue — " + ", ".join(kinds)
+        "⚠️ Robin liveness: digest(s) overdue — "
+        + ", ".join(kinds)
         + ". Check the robin-digest timers on the VPS."
     )
     if not (config.telegram_token and config.maintainer_chat):

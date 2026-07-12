@@ -113,11 +113,15 @@ async def _send_html(message: Message, html: str) -> None:
         try:
             await message.reply_text(part, parse_mode=ParseMode.HTML)
         except BadRequest as exc:
-            logger.error("§6.7 formatting-rejected send: %s | payload=%r", exc, part[:200])
+            logger.error(
+                "§6.7 formatting-rejected send: %s | payload=%r", exc, part[:200]
+            )
             await message.reply_text(part)
 
 
-async def _answer(update: Update, runtime: Runtime, question: str, *, voice_reply: bool) -> None:
+async def _answer(
+    update: Update, runtime: Runtime, question: str, *, voice_reply: bool
+) -> None:
     message = update.effective_message
     chat_id = str(update.effective_chat.id)
     config = runtime.config
@@ -134,11 +138,15 @@ async def _answer(update: Update, runtime: Runtime, question: str, *, voice_repl
         )
     except Exception:
         logger.exception("ask() failed")
-        await message.reply_text("Something went wrong while composing the answer — logged.")
+        await message.reply_text(
+            "Something went wrong while composing the answer — logged."
+        )
         return
     # Stage 2: a quick overlapping re-ask marks the PREVIOUS answer as a suspected failure.
     previous = memory.last_user_turn(config, "telegram", chat_id)
-    if previous is not None and gaps.is_reformulation(previous[0], previous[1], question):
+    if previous is not None and gaps.is_reformulation(
+        previous[0], previous[1], question
+    ):
         gaps.log_gap(
             config,
             surface="telegram",
@@ -187,7 +195,10 @@ def build_application(runtime: Runtime) -> Application:
             )
             return
         await _answer(
-            update, runtime, f"What changed {phrase}? Summarize per repo.", voice_reply=False
+            update,
+            runtime,
+            f"What changed {phrase}? Summarize per repo.",
+            voice_reply=False,
         )
 
     async def cmd_gap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -250,7 +261,9 @@ def build_application(runtime: Runtime) -> Application:
             await message.reply_text(refusal)
             return
         if runtime.stt is None:
-            await message.reply_text("Voice is not configured (missing OPENAI_API_KEY).")
+            await message.reply_text(
+                "Voice is not configured (missing OPENAI_API_KEY)."
+            )
             return
         media = message.voice or message.audio
         file = await context.bot.get_file(media.file_id)
@@ -260,7 +273,9 @@ def build_application(runtime: Runtime) -> Application:
             question = runtime.stt.transcribe(audio, mime)
         except Exception:
             logger.exception("STT failed")
-            await message.reply_text("Could not transcribe that — try again or type it.")
+            await message.reply_text(
+                "Could not transcribe that — try again or type it."
+            )
             return
         if not question:
             await message.reply_text("I heard silence — try again?")

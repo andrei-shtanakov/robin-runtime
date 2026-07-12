@@ -21,7 +21,9 @@ def _chat_file(config: RobinConfig, surface: str, chat_id: str) -> Path:
     return config.var_dir / "chats" / f"{safe}.jsonl"
 
 
-def recent(config: RobinConfig, surface: str, chat_id: str, n: int | None = None) -> list[Turn]:
+def recent(
+    config: RobinConfig, surface: str, chat_id: str, n: int | None = None
+) -> list[Turn]:
     """Last N turns for this chat (unconditional reseed; slots 12/14)."""
     n = n if n is not None else config.history_turns
     path = _chat_file(config, surface, chat_id)
@@ -58,7 +60,9 @@ def last_user_turn(
     return result
 
 
-def append(config: RobinConfig, surface: str, chat_id: str, role: str, text: str) -> None:
+def append(
+    config: RobinConfig, surface: str, chat_id: str, role: str, text: str
+) -> None:
     """Record one turn (truncated — the window is continuity context, not an archive)."""
     path = _chat_file(config, surface, chat_id)
     path.parent.mkdir(parents=True, exist_ok=True)

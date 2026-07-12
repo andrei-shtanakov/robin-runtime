@@ -15,7 +15,9 @@ NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
 
 def _config(tmp_path: Path, grace: int = 6) -> RobinConfig:
     return RobinConfig(
-        vault_path=tmp_path, repo_paths=[], var_dir=tmp_path / "var",
+        vault_path=tmp_path,
+        repo_paths=[],
+        var_dir=tmp_path / "var",
         digest_grace_hours=grace,
     )
 
