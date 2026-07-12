@@ -55,7 +55,9 @@ def gap_to_event(gap: dict) -> dict:
     gap records carry no id of their own, and a content hash keeps the
     provenance pointer stable and idempotent across re-reads.
     """
-    canonical = json.dumps(gap, sort_keys=True, ensure_ascii=False)
+    canonical = json.dumps(
+        gap, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     ts = datetime.fromtimestamp(int(gap.get("ts", 0)), tz=timezone.utc)
     fail_signal = gap.get("fail_signal") or "unknown"
@@ -65,7 +67,7 @@ def gap_to_event(gap: dict) -> dict:
         "producer": PRODUCER,
         "kind": "gap",
         "ts": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": {"store": GAPS_STORE, "id": f"sha256:{digest[:32]}"},
+        "source": {"store": GAPS_STORE, "id": f"sha256:{digest}"},
         "proposed_target": _TARGETS.get(fail_signal, _DEFAULT_TARGET),
         "payload": {
             "question": gap.get("question"),
@@ -80,7 +82,7 @@ def emit_events(config: RobinConfig, gaps: list[dict]) -> Path:
     """Append one LearningEvent per gap to var/learning_events.jsonl."""
     config.var_dir.mkdir(parents=True, exist_ok=True)
     path = config.var_dir / EVENTS_FILE
-    with path.open("a") as handle:
+    with path.open("a", encoding="utf-8") as handle:
         for gap in gaps:
             handle.write(json.dumps(gap_to_event(gap), ensure_ascii=False) + "\n")
     return path
