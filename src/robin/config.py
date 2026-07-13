@@ -24,7 +24,9 @@ _ECOSYSTEM_REPOS = (
     "dispatcher",
     "steward",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
-    # development (the mirror is a separate read-only clone; runtime code stays isolated).
+    # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
+    # the VPS mirror layout that is a separate read-only clone (the runtime checkout
+    # stays out of retrieval); on a local workspace it is the live working copy.
     "robin-runtime",
 )
 
