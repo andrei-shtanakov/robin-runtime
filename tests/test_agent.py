@@ -64,6 +64,7 @@ def test_build_prompt_ambient_carries_asker_channel_and_digests() -> None:
     assert "- bob: we were debating the arbiter pin" in prompt
     assert "- 2026-07-12-daily.md: # Daily digest — arbiter moved to v0.9" in prompt
     assert prompt.index("RECENT CHANNEL MESSAGES (untrusted") < prompt.index("SOURCES:")
+    assert "RECENT DIGESTS (untrusted" in prompt  # every ambient block is untrusted
 
 
 def test_build_prompt_without_ambient_is_unchanged() -> None:

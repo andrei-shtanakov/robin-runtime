@@ -39,11 +39,14 @@ def test_latest_returns_newest_digests_truncated(tmp_path: Path) -> None:
     config = _config(tmp_path)
     assert latest(config) == []  # no digests yet — ambient context degrades gracefully
     persist(config, "weekly", "old week " + "x" * 5000, now=NOW)
-    persist(config, "daily", "fresh day", now=NOW.replace(day=10))
+    persist(config, "daily", "fresh\nmulti-line day", now=NOW.replace(day=10))
     excerpts = latest(config, limit=2, max_chars=100)
     assert len(excerpts) == 2
     assert excerpts[0].startswith("2026-07-10-daily.md:")  # newest first
     assert all(len(e) <= len("2026-07-09-weekly.md: ") + 100 for e in excerpts)
+    # one prompt bullet per digest — persisted markdown is flattened
+    assert all("\n" not in e for e in excerpts)
+    assert "fresh multi-line day" in excerpts[0]
 
 
 def test_liveness_flags_missing_then_clears(tmp_path: Path) -> None:

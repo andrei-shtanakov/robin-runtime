@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -43,14 +44,19 @@ def _marker(config: RobinConfig, kind: str) -> Path:
 
 
 def latest(config: RobinConfig, limit: int = 2, max_chars: int = 1200) -> list[str]:
-    """Newest persisted digests, truncated — the "recent digests" half of §6.2 ambient
-    context. Filenames are date-prefixed (persist()), so name order is time order."""
+    """Newest persisted digests, flattened to one line each and truncated — the "recent
+    digests" half of §6.2 ambient context. Filenames are date-prefixed (persist()), so
+    name order is time order."""
     directory = _digest_dir(config)
     if not directory.is_dir():
         return []
     excerpts: list[str] = []
     for path in sorted(directory.glob("*.md"), reverse=True)[:limit]:
-        excerpts.append(f"{path.name}: {path.read_text(errors='ignore')[:max_chars]}")
+        # one prompt bullet per digest — same one-line rule as channel messages
+        content = re.sub(
+            r"\s+", " ", path.read_text(encoding="utf-8", errors="ignore")
+        ).strip()
+        excerpts.append(f"{path.name}: {content[:max_chars]}")
     return excerpts
 
 
