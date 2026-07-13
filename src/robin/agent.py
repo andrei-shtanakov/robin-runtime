@@ -177,9 +177,20 @@ def build_prompt(
 
 
 def _system_prompt(config: RobinConfig) -> str:
+    from . import learnings
+
     soul = config.vault_path / "soul.md"
     persona = soul.read_text(errors="ignore") if soul.is_file() else ""
-    return f"{persona}\n\n---\n{_ANSWER_RULES}".strip()
+    prompt = f"{persona}\n\n---\n{_ANSWER_RULES}".strip()
+    # §5 M4: human-promoted learnings MUST be loaded into every future session. The
+    # block changes only on promotion, so the cache breakpoint stays effective.
+    rules = learnings.load_promoted(config)
+    if rules:
+        prompt += (
+            "\n\nPROMOTED TEAM LEARNINGS (human-approved corrections — apply them):"
+        )
+        prompt += "".join(f"\n- {rule}" for rule in rules)
+    return prompt
 
 
 # USD per MTok (input, output) — for the §7 budget guard. The API reports usage, not
