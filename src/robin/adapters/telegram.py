@@ -22,7 +22,7 @@ from telegram.ext import (
     filters,
 )
 
-from .. import digest, fmt, gaps, guard, memory
+from .. import digest, fmt, gaps, guard, learnings, memory
 from ..agent import Ambient, Answer, ask
 from ..changes import parse_period
 from ..config import RobinConfig, load_config
@@ -39,7 +39,8 @@ _HELP = (
     "• что изменилось за неделю?\n"
     "• /digest today | week | since 2026-07-01\n"
     "• /cost — today's spend and quotas\n"
-    "• /gap <comment> or a 👎 reaction — flag a bad answer (feeds my self-review)\n\n"
+    "• /gap <comment> or a 👎 reaction — flag a bad answer (stages a learning "
+    "candidate for the maintainer and feeds my self-review)\n\n"
     "In the team channels the maintainer has registered, I keep the last few messages "
     "as ambient context so group @mentions don't need re-explanation (§6.5 disclosure)."
 )
@@ -127,6 +128,43 @@ def _addressed_text(
     ):
         return text.strip() or None
     return None
+
+
+async def _stage_learning(
+    config: RobinConfig,
+    bot: object,
+    *,
+    question: str | None,
+    comment: str | None,
+    fail_signal: str,
+    requester: str,
+) -> None:
+    """§6.4 M4: explicit negative feedback becomes a staged learning file (read-back
+    verified in learnings.stage). Promotion is out-of-band (§6.5) — the maintainer DM
+    only points at the CLI, it is not an affordance chat content can trigger."""
+    try:
+        path = learnings.stage(
+            config,
+            question=question,
+            comment=comment,
+            fail_signal=fail_signal,
+            surface="telegram",
+            requester=requester,
+        )
+    except Exception:
+        logger.exception("staging failed (the gap record is already logged)")
+        return
+    if not config.maintainer_chat:
+        return
+    try:
+        await bot.send_message(
+            config.maintainer_chat,
+            f"📥 Staged learning: {path.name}\n"
+            f"Review on the host: python -m robin.learnings show {path.name}\n"
+            "Then: promote <name> --route memory|skill|kb — or reject <name>.",
+        )
+    except Exception:
+        logger.exception("maintainer notify failed (learning staged at %s)", path)
 
 
 async def _send_html(message: Message, html: str) -> None:
@@ -236,6 +274,7 @@ def build_application(runtime: Runtime) -> Application:
             return
         chat_id = str(update.effective_chat.id)
         previous = memory.last_user_turn(config, "telegram", chat_id)
+        comment = " ".join(context.args) if context.args else None
         gaps.log_gap(
             config,
             surface="telegram",
@@ -243,13 +282,22 @@ def build_application(runtime: Runtime) -> Application:
             requester=_requester(update),
             question=previous[0] if previous else None,
             fail_signal="gap_command",
-            comment=" ".join(context.args) if context.args else None,
+            comment=comment,
+        )
+        await _stage_learning(
+            config,
+            context.bot,
+            question=previous[0] if previous else None,
+            comment=comment,
+            fail_signal="gap_command",
+            requester=_requester(update),
         )
         await update.effective_message.reply_text(
-            "Logged — thanks. This feeds the weekly self-review."
+            "Logged — thanks. Staged for the maintainer's review; this also feeds "
+            "the weekly self-review."
         )
 
-    async def on_reaction(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    async def on_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reaction = update.message_reaction
         if reaction is None or not _allowed(config, update):
             return
@@ -268,6 +316,14 @@ def build_application(runtime: Runtime) -> Application:
             question=previous[0] if previous else None,
             fail_signal="thumbs_down",
             comment=f"message_id={reaction.message_id}",
+        )
+        await _stage_learning(
+            config,
+            context.bot,
+            question=previous[0] if previous else None,
+            comment=None,
+            fail_signal="thumbs_down",
+            requester=_requester(update),
         )
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
