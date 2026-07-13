@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from robin.config import RobinConfig
-from robin.digest import persist, window
+from robin.digest import latest, persist, window
 from robin.liveness import stale_kinds
 
 NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
@@ -33,6 +33,17 @@ def test_window_resumes_from_marker_and_persist_writes_it(tmp_path: Path) -> Non
     assert path.is_file() and "digest body" in path.read_text()
     period = window(config, "daily", now=NOW)
     assert period.since == NOW  # marker beats cadence fallback
+
+
+def test_latest_returns_newest_digests_truncated(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    assert latest(config) == []  # no digests yet — ambient context degrades gracefully
+    persist(config, "weekly", "old week " + "x" * 5000, now=NOW)
+    persist(config, "daily", "fresh day", now=NOW.replace(day=10))
+    excerpts = latest(config, limit=2, max_chars=100)
+    assert len(excerpts) == 2
+    assert excerpts[0].startswith("2026-07-10-daily.md:")  # newest first
+    assert all(len(e) <= len("2026-07-09-weekly.md: ") + 100 for e in excerpts)
 
 
 def test_liveness_flags_missing_then_clears(tmp_path: Path) -> None:

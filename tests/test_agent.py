@@ -45,3 +45,28 @@ def test_build_prompt_history_is_marked_untrusted_and_precedes_sources() -> None
     assert "untrusted" in prompt
     assert prompt.index("RECENT CONVERSATION") < prompt.index("SOURCES:")
     assert "- user: what is arbiter?" in prompt
+
+
+def test_build_prompt_ambient_carries_asker_channel_and_digests() -> None:
+    """M3 (§6.2): a group mention gets asker identity, the last channel messages, recent
+    digests, and the conciseness rule — all marked untrusted, all before SOURCES."""
+    from robin.agent import Ambient
+
+    sources = [Hit("authored/decisions/adr.md", 22, "catalog")]
+    ambient = Ambient(
+        asker="@alice",
+        messages=["bob: we were debating the arbiter pin", "carol: which version?"],
+        digests=["2026-07-12-daily.md: # Daily digest — arbiter moved to v0.9"],
+    )
+    prompt = build_prompt("so which pin do we use?", sources, ambient=ambient)
+    assert "ASKED BY: @alice" in prompt
+    assert "2-5 concise sentences" in prompt
+    assert "- bob: we were debating the arbiter pin" in prompt
+    assert "- 2026-07-12-daily.md: # Daily digest — arbiter moved to v0.9" in prompt
+    assert prompt.index("RECENT CHANNEL MESSAGES (untrusted") < prompt.index("SOURCES:")
+
+
+def test_build_prompt_without_ambient_is_unchanged() -> None:
+    sources = [Hit("authored/decisions/adr.md", 22, "catalog")]
+    prompt = build_prompt("who owns the catalog?", sources)
+    assert "ASKED BY" not in prompt and "RECENT CHANNEL MESSAGES" not in prompt

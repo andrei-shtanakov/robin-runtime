@@ -69,3 +69,49 @@ def append(
     record = {"ts": int(time.time()), "role": role, "text": text[:_MAX_TURN_CHARS]}
     with path.open("a") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+# --- Channel ambient log (ROBIN-SPEC slot 8 / §6.2) ------------------------------------
+# Raw channel messages, the first stage of the §5 memory pipeline. Distinct from the
+# conversation window above: it records what the TEAM said around Robin, not exchanges
+# with Robin, and it is only ever read back as untrusted ambient context for mentions.
+
+
+def _channel_file(config: RobinConfig, surface: str, chat_id: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", f"{surface}-{chat_id}")
+    return config.var_dir / "channel" / f"{safe}.jsonl"
+
+
+def log_channel(
+    config: RobinConfig, surface: str, chat_id: str, sender: str, text: str
+) -> None:
+    """Record one channel message (truncated; capture scope is gated by the caller)."""
+    path = _channel_file(config, surface, chat_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": int(time.time()),
+        "sender": sender[:100],
+        "text": text[:_MAX_TURN_CHARS],
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def recent_channel(
+    config: RobinConfig, surface: str, chat_id: str, n: int | None = None
+) -> list[str]:
+    """Last N channel messages as "sender: text" lines, oldest first (slot 13)."""
+    n = n if n is not None else config.ambient_messages
+    path = _channel_file(config, surface, chat_id)
+    if not path.is_file():
+        return []
+    lines: list[str] = []
+    for line in path.read_text(errors="ignore").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        sender, text = record.get("sender"), record.get("text")
+        if isinstance(sender, str) and isinstance(text, str):
+            lines.append(f"{sender}: {text}")
+    return lines[-n:]

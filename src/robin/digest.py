@@ -42,6 +42,18 @@ def _marker(config: RobinConfig, kind: str) -> Path:
     return _digest_dir(config) / f"last-{kind}.txt"
 
 
+def latest(config: RobinConfig, limit: int = 2, max_chars: int = 1200) -> list[str]:
+    """Newest persisted digests, truncated — the "recent digests" half of §6.2 ambient
+    context. Filenames are date-prefixed (persist()), so name order is time order."""
+    directory = _digest_dir(config)
+    if not directory.is_dir():
+        return []
+    excerpts: list[str] = []
+    for path in sorted(directory.glob("*.md"), reverse=True)[:limit]:
+        excerpts.append(f"{path.name}: {path.read_text(errors='ignore')[:max_chars]}")
+    return excerpts
+
+
 def window(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Period:
     """Since the last successful digest of this kind; fallback: one cadence back."""
     zone = ZoneInfo(config.tz)

@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from robin.adapters.telegram import _addressed_text, _allowed, gate
+from robin.adapters.telegram import (
+    _addressed_text,
+    _allowed,
+    _capturable,
+    _sender_name,
+    gate,
+)
 from robin.config import RobinConfig
 
 
@@ -80,3 +86,33 @@ def test_group_reply_to_bot_is_addressed() -> None:
     assert _addressed_text(reply_to_bot, "robin_bot", bot_id) == "and who consumes it?"
     reply_to_human = _message("side talk", "supergroup", reply_to_user_id=42)
     assert _addressed_text(reply_to_human, "robin_bot", bot_id) is None
+
+
+# --- M3 ambient context: capture scope (slot 8) and sender identity (§6.2) ---
+
+
+def _chat(chat_id: int = -100123, username: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(id=chat_id, username=username)
+
+
+def test_capture_scope_matches_id_and_username(tmp_path: Path) -> None:
+    config = _config(tmp_path, ())
+    by_id = RobinConfig(vault_path=tmp_path, repo_paths=[], capture_chats=("-100123",))
+    assert _capturable(by_id, _chat(-100123))
+    assert not _capturable(by_id, _chat(-100999))
+    by_name = RobinConfig(
+        vault_path=tmp_path, repo_paths=[], capture_chats=("@teamchat",)
+    )
+    assert _capturable(by_name, _chat(-1, "teamchat"))
+    assert not _capturable(by_name, _chat(-1, "otherchat"))
+    # empty registry = passive capture OFF (safe default, §6.5 disclosure gate)
+    assert not _capturable(config, _chat(-100123))
+
+
+def test_sender_name_prefers_username() -> None:
+    assert _sender_name(SimpleNamespace(id=1, username="alice", first_name="A")) == (
+        "@alice"
+    )
+    assert _sender_name(SimpleNamespace(id=1, username=None, first_name="Bob")) == "Bob"
+    assert _sender_name(SimpleNamespace(id=7, username=None, first_name=None)) == "7"
+    assert _sender_name(None) == "(unknown)"
