@@ -22,8 +22,8 @@ from telegram.ext import (
     filters,
 )
 
-from .. import fmt, gaps, guard, memory
-from ..agent import Answer, ask
+from .. import digest, fmt, gaps, guard, memory
+from ..agent import Ambient, Answer, ask
 from ..changes import parse_period
 from ..config import RobinConfig, load_config
 from ..voice import Stt, Tts, make_stt, make_tts, speakable
@@ -39,7 +39,9 @@ _HELP = (
     "• что изменилось за неделю?\n"
     "• /digest today | week | since 2026-07-01\n"
     "• /cost — today's spend and quotas\n"
-    "• /gap <comment> or a 👎 reaction — flag a bad answer (feeds my self-review)"
+    "• /gap <comment> or a 👎 reaction — flag a bad answer (feeds my self-review)\n\n"
+    "In the team channels the maintainer has registered, I keep the last few messages "
+    "as ambient context so group @mentions don't need re-explanation (§6.5 disclosure)."
 )
 
 
@@ -84,6 +86,26 @@ def gate(config: RobinConfig, update: Update) -> str | None:
     return None
 
 
+def _sender_name(user: object) -> str:
+    """Human-readable sender identity for the ambient log and ASKED BY (§6.2)."""
+    if user is None:
+        return "(unknown)"
+    username = getattr(user, "username", None)
+    if username:
+        return f"@{username}"
+    return getattr(user, "first_name", None) or str(getattr(user, "id", "(unknown)"))
+
+
+def _capturable(config: RobinConfig, chat: object) -> bool:
+    """Slot 8 passive-capture scope: only chats the maintainer explicitly registered
+    (and disclosed to the team, §6.5) are logged. Empty registry = capture off."""
+    candidates = {str(getattr(chat, "id", ""))}
+    username = getattr(chat, "username", None)
+    if username:
+        candidates |= {username, f"@{username}"}
+    return bool(candidates & set(config.capture_chats))
+
+
 def _addressed_text(
     message: Message, bot_username: str, bot_id: int | None = None
 ) -> str | None:
@@ -120,7 +142,12 @@ async def _send_html(message: Message, html: str) -> None:
 
 
 async def _answer(
-    update: Update, runtime: Runtime, question: str, *, voice_reply: bool
+    update: Update,
+    runtime: Runtime,
+    question: str,
+    *,
+    voice_reply: bool,
+    ambient: Ambient | None = None,
 ) -> None:
     message = update.effective_message
     chat_id = str(update.effective_chat.id)
@@ -135,6 +162,7 @@ async def _answer(
             requester=_requester(update),
             chat=chat_id,
             history=history,
+            ambient=ambient,
         )
     except Exception:
         logger.exception("ask() failed")
@@ -243,15 +271,42 @@ def build_application(runtime: Runtime) -> Application:
         )
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        question = _addressed_text(
-            update.effective_message, context.bot.username, context.bot.id
-        )
+        message = update.effective_message
+        chat = message.chat
+        is_group = chat.type != ChatType.PRIVATE
+        captured = is_group and _capturable(config, chat)
+        question = _addressed_text(message, context.bot.username, context.bot.id)
         if question is None:
-            return  # group chatter not addressed to us (slot 8 passive capture: not enabled)
-        if (refusal := gate(config, update)) is not None:
-            await update.effective_message.reply_text(refusal)
+            if captured:  # slot 8: ambient log only, no reply, no LLM call
+                memory.log_channel(
+                    config,
+                    "telegram",
+                    str(chat.id),
+                    _sender_name(update.effective_user),
+                    message.text or "",
+                )
             return
-        await _answer(update, runtime, question, voice_reply=False)
+        if (refusal := gate(config, update)) is not None:
+            await message.reply_text(refusal)
+            return
+        ambient = None
+        if is_group:
+            # §6.2/M3: last N channel messages (gathered BEFORE logging the mention
+            # itself) + recent digests + the asker's identity.
+            ambient = Ambient(
+                asker=_sender_name(update.effective_user),
+                messages=memory.recent_channel(config, "telegram", str(chat.id)),
+                digests=digest.latest(config),
+            )
+        if captured:  # the mention is channel history for the next question
+            memory.log_channel(
+                config,
+                "telegram",
+                str(chat.id),
+                _sender_name(update.effective_user),
+                message.text or "",
+            )
+        await _answer(update, runtime, question, voice_reply=False, ambient=ambient)
 
     async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message = update.effective_message

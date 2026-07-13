@@ -61,6 +61,11 @@ class RobinConfig:
 
     history_turns: int = 10  # slots 13/14: reseed window
 
+    # slot 8: passive-capture scope — group chats whose messages Robin keeps as ambient
+    # context for @mentions (§6.2). MUST be disclosed to the team (§6.5); empty = off.
+    capture_chats: tuple[str, ...] = ()
+    ambient_messages: int = 10  # slot 13: ambient context size N
+
     def read_roots(self) -> list[Path]:
         """All read-only roots the tool layer may search (§4). Robin's own digests are
         included so "what did I miss?" can cite them (M2) — they live in var/, not the KB."""
@@ -102,4 +107,10 @@ def load_config() -> RobinConfig:
         tts_model=os.environ.get("ROBIN_TTS_MODEL", "tts-1"),
         tts_voice=os.environ.get("ROBIN_TTS_VOICE", "alloy"),
         history_turns=int(os.environ.get("ROBIN_HISTORY_TURNS", "10")),
+        capture_chats=tuple(
+            c.strip()
+            for c in os.environ.get("ROBIN_CAPTURE_CHATS", "").split(",")
+            if c.strip()
+        ),
+        ambient_messages=int(os.environ.get("ROBIN_AMBIENT_N", "10")),
     )
