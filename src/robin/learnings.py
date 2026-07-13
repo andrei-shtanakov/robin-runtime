@@ -51,6 +51,7 @@ def stage(
     fail_signal: str,
     surface: str,
     requester: str | None = None,
+    context: str | None = None,
 ) -> Path:
     """Write one staged learning candidate (dated, one insight per file) and verify the
     write by reading it back (§6.4 MUST — staged writes once failed silently for weeks)."""
@@ -69,6 +70,7 @@ def stage(
             "",
             f"- signal: {fail_signal} (surface: {surface}"
             + (f", requester: {requester})" if requester else ")"),
+            *([f"- context: {context}"] if context else []),
             f"- question: {question or '(unknown — feedback on an older answer)'}",
             f"- what to do differently: {comment or '(no comment — human to fill in)'}",
             "",
@@ -83,23 +85,48 @@ def stage(
     return path
 
 
+def _rule_text(raw: str) -> str:
+    """Distill a promoted file into one clean rule line: the correction itself first,
+    the triggering question as context; staging metadata (signal/requester/context ids)
+    and boilerplate never reach the system prompt. Freeform human edits pass through."""
+    question: str | None = None
+    correction: str | None = None
+    body: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if (
+            not stripped
+            or stripped.startswith("#")
+            or stripped.startswith("Promote (human")
+        ):
+            continue
+        if stripped.startswith("- signal:") or stripped.startswith("- context:"):
+            continue
+        if stripped.startswith("- question:"):
+            question = stripped.removeprefix("- question:").strip()
+            continue
+        if stripped.startswith("- what to do differently:"):
+            correction = stripped.removeprefix("- what to do differently:").strip()
+            continue
+        body.append(stripped.removeprefix("- ").strip())
+    parts: list[str] = []
+    if correction and "human to fill in" not in correction:
+        parts.append(correction)
+    if question and not question.startswith("(unknown"):
+        parts.append(f'(triggered by: "{question}")')
+    parts.extend(body)
+    return re.sub(r"\s+", " ", " ".join(parts)).strip()
+
+
 def load_promoted(config: RobinConfig) -> list[str]:
     """Promoted rules for the system prompt (§5: MUST load into every future session).
-    One rule per file; staging boilerplate (the md header, the promote instruction) is
-    stripped, the rest is flattened and bounded so a rule stays one line."""
+    One rule per file, distilled by _rule_text, bounded so a rule stays one line."""
     directory = _store(config, "promoted")
     if not directory.is_dir():
         return []
     rules: list[str] = []
     for path in sorted(directory.glob("*.md"))[:_MAX_RULES]:
-        kept = [
-            line
-            for line in path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            if line.strip()
-            and not line.startswith("#")
-            and not line.startswith("Promote (human")
-        ]
-        text = re.sub(r"\s+", " ", " ".join(kept)).strip()
+        text = _rule_text(path.read_text(encoding="utf-8", errors="ignore"))
         if text:
             rules.append(text[:_MAX_RULE_CHARS])
     return rules
@@ -174,7 +201,15 @@ def main() -> None:
     elif command == "show" and len(args) >= 2:
         print((_store(config, "staged") / Path(args[1]).name).read_text())
     elif command == "promote" and len(args) >= 2:
-        route = args[args.index("--route") + 1] if "--route" in args else "memory"
+        route = "memory"
+        if "--route" in args:
+            index = args.index("--route")
+            if index + 1 >= len(args):
+                raise SystemExit(
+                    "--route needs a value: memory | skill | kb "
+                    "(e.g. promote <name> --route memory)"
+                )
+            route = args[index + 1]
         destination = promote(config, args[1], route)
         print(f"promoted → {destination} (route: {route})")
         if route != "memory":

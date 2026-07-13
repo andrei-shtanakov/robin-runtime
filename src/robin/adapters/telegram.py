@@ -138,6 +138,7 @@ async def _stage_learning(
     comment: str | None,
     fail_signal: str,
     requester: str,
+    context: str | None = None,
 ) -> None:
     """§6.4 M4: explicit negative feedback becomes a staged learning file (read-back
     verified in learnings.stage). Promotion is out-of-band (§6.5) — the maintainer DM
@@ -150,6 +151,7 @@ async def _stage_learning(
             fail_signal=fail_signal,
             surface="telegram",
             requester=requester,
+            context=context,
         )
     except Exception:
         logger.exception("staging failed (the gap record is already logged)")
@@ -324,6 +326,7 @@ def build_application(runtime: Runtime) -> Application:
             comment=None,
             fail_signal="thumbs_down",
             requester=_requester(update),
+            context=f"message_id={reaction.message_id}",
         )
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

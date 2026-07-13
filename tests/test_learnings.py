@@ -84,8 +84,61 @@ def test_promote_memory_route_enters_promoted_rules(tmp_path: Path) -> None:
     assert destination.parent.name == "promoted" and not path.exists()
     (rule,) = load_promoted(config)
     assert "always cite the ADR date" in rule and "\n" not in rule
-    # staging boilerplate must not leak into the system prompt
+    # staging boilerplate and metadata must not leak into the system prompt
     assert "Promote (human" not in rule and "Staged learning" not in rule
+    assert "signal:" not in rule and "requester" not in rule
+
+
+def test_promoted_rule_is_distilled_with_question_context(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = stage(
+        config,
+        question="что изменилось за неделю?",
+        comment="неделя начинается с понедельника",
+        fail_signal="thumbs_down",
+        surface="telegram",
+        requester="42",
+        context="message_id=777",
+    )
+    assert "- context: message_id=777" in path.read_text()  # maintainer sees the id
+    promote(config, path.name, "memory")
+    (rule,) = load_promoted(config)
+    assert rule.startswith("неделя начинается с понедельника")
+    assert 'triggered by: "что изменилось за неделю?"' in rule
+    assert "message_id" not in rule  # metadata stays out of the system prompt
+
+
+def test_promoted_freeform_human_edit_passes_through(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = stage(
+        config,
+        question=None,
+        comment=None,
+        fail_signal="thumbs_down",
+        surface="telegram",
+    )
+    # the maintainer rewrites the candidate before promoting — common for bare 👎
+    path.write_text("Always answer digest questions with Monday-start weeks.\n")
+    promote(config, path.name, "memory")
+    assert load_promoted(config) == [
+        "Always answer digest questions with Monday-start weeks."
+    ]
+
+
+def test_cli_route_flag_requires_value(tmp_path: Path, monkeypatch) -> None:
+    import robin.learnings as module
+
+    config = _config(tmp_path)
+    path = stage(
+        config, question="q", comment="c", fail_signal="gap_command", surface="telegram"
+    )
+    monkeypatch.setattr(module, "load_config", lambda: config)
+    monkeypatch.setattr(
+        "sys.argv", ["robin.learnings", "promote", path.name, "--route"]
+    )
+    with pytest.raises(SystemExit, match="--route needs a value"):
+        module.main()
+    assert list_staged(config) == [path]  # nothing moved
 
 
 def test_promote_skill_and_kb_routes_go_to_routed_not_promoted(tmp_path: Path) -> None:
