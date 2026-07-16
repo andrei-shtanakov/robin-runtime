@@ -202,7 +202,7 @@ async def post(config: RobinConfig, text: str, kind: str) -> None:
     kind_ru = {"daily": "дневной дайджест", "weekly": "недельный дайджест"}.get(
         kind, f"{kind} digest"
     )
-    html = f"<b>Robin — {kind_ru}</b>\n\n{fmt.escape_html(text)}"
+    html = f"<b>Robin — {fmt.escape_html(kind_ru)}</b>\n\n{fmt.escape_html(text)}"
     for part in fmt.chunk(html):
         try:
             await bot.send_message(config.telegram_channel, part, parse_mode="HTML")
