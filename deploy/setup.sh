@@ -11,7 +11,7 @@ UNIT_DIR=/etc/systemd/system
 # Mirror remotes: read-only view of the ecosystem (slot 6). Adjust to your remotes —
 # see projects.md in the workspace root for the canonical list.
 GIT_BASE="${GIT_BASE:?set GIT_BASE, e.g. git@github.com:your-org}"
-REPOS=(prograph-vault atp-platform Maestro arbiter spec-runner deployer dispatcher steward robin-runtime)
+REPOS=(prograph-vault atp-platform Maestro arbiter spec-runner deployer dispatcher steward proctor prograph discovery open-prose robin-runtime)
 
 echo "== packages =="
 apt-get update -q
