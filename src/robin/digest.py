@@ -29,10 +29,60 @@ logger = logging.getLogger("robin.digest")
 CADENCE_HOURS = {"daily": 24, "weekly": 24 * 7}
 
 _DIGEST_QUESTION = (
-    "Write the {kind} ecosystem digest for the team: what moved in each repo (collapse "
-    "near-duplicate commits), which repos did NOT move, and any open questions the changes "
-    "raise. Be concise; every claim cites its source."
+    "Write the {kind} ecosystem digest for the team, covering the digest window "
+    "({period}). Structure: 1) what was DONE in each repo over the period (collapse "
+    "near-duplicate commits; repos with no visible activity get one short collective "
+    "line); 2) what remains NOT done against the plan — only if open plan items appear "
+    "in the SOURCES, otherwise omit the section; 3) unresolved questions the changes "
+    "raise. Be concise."
 )
+
+# Digest-specific composition rules: replaces _ANSWER_RULES for this surface only.
+# The digest is chat prose for humans, so the `path:line` citation contract is dropped;
+# the negative-evidence invariant (incident 2026-07-09) is kept verbatim in spirit.
+_DIGEST_RULES = (
+    "Compose a team digest using ONLY the SOURCES below — never invent activity. "
+    "The digest is read by humans in a chat channel: do NOT include file paths, line "
+    "numbers, commit hashes, document names, or any other source citations — plain "
+    "prose only. "
+    "Write the digest twice: first in English, then the same content in Russian, "
+    "separated by a line containing only '---'. "
+    "NEGATIVE EVIDENCE RULE: empty or irrelevant SOURCES are NEVER proof of absence. "
+    "Never assert that something does not exist, did not happen, or 'there were no "
+    "changes' merely because the SOURCES are silent — say that no activity is visible "
+    "to your tools instead. Distinguish 'I found nothing' from 'there is nothing'."
+)
+
+# Plan grounding for section 2: open (unchecked) checklist items from each mirror's
+# plan files. Checkbox syntax is the only machine-detectable "remaining work" marker;
+# repos without plan files simply contribute nothing and the section is omitted.
+_PLAN_GLOBS = ("TODO.md", "ROADMAP.md", "docs/plans/*.md")
+_UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
+
+
+def plan_hits(config: RobinConfig, *, max_hits: int = 15) -> list[Hit]:
+    """Open plan items across the mirrors, as prompt hits labeled 'open plan item'."""
+    hits: list[Hit] = []
+    # Mirrors only — read_roots() also exposes var/digests (Robin's own outputs),
+    # which must never masquerade as a repo plan.
+    for root in [config.vault_path, *config.repo_paths]:
+        for pattern in _PLAN_GLOBS:
+            for path in sorted(root.glob(pattern)):
+                try:
+                    lines = path.read_text(
+                        encoding="utf-8", errors="ignore"
+                    ).splitlines()
+                except OSError:
+                    continue
+                rel = f"{root.name}/{path.relative_to(root)}"
+                for number, line in enumerate(lines, 1):
+                    if _UNCHECKED.match(line):
+                        hits.append(
+                            Hit(rel, number, f"open plan item: {line.strip()[:220]}")
+                        )
+                        if len(hits) >= max_hits:
+                            return hits
+    return hits
 
 
 def _digest_dir(config: RobinConfig) -> Path:
@@ -80,8 +130,9 @@ def compose(
 ) -> tuple[str, list[Hit], float | None]:
     """Compose the digest text via the standard grounded pipeline."""
     period = window(config, kind, now=now)
-    sources = collect_changes(config, period, max_hits=60)
-    text, cost = _compose_answer(_DIGEST_QUESTION.format(kind=kind), sources, config)
+    sources = collect_changes(config, period, max_hits=60) + plan_hits(config)
+    question = _DIGEST_QUESTION.format(kind=kind, period=period.label)
+    text, cost = _compose_answer(question, sources, config, rules=_DIGEST_RULES)
     return text, sources, cost
 
 
