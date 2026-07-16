@@ -50,7 +50,11 @@ _DIGEST_RULES = (
     "NEGATIVE EVIDENCE RULE: empty or irrelevant SOURCES are NEVER proof of absence. "
     "Never assert that something does not exist, did not happen, or 'there were no "
     "changes' merely because the SOURCES are silent — say that no activity is visible "
-    "to your tools instead. Distinguish 'I found nothing' from 'there is nothing'."
+    "to your tools instead. Distinguish 'I found nothing' from 'there is nothing'. "
+    "COVERAGE RULE: name only repos that appear in the SOURCES. The '(watched-repos)' "
+    "source is the complete list of repos your tools can see — repos outside it were "
+    "NOT checked, so never mention them, not even as quiet or unchanged. If the "
+    "SOURCES flag the plan list as partial, say the plan picture is incomplete."
 )
 
 # Plan grounding for section 2: open (unchecked) checklist items from each mirror's
@@ -60,12 +64,17 @@ _PLAN_GLOBS = ("TODO.md", "ROADMAP.md", "docs/plans/*.md")
 _UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
 
 
-def plan_hits(config: RobinConfig, *, max_hits: int = 15) -> list[Hit]:
-    """Open plan items across the mirrors, as prompt hits labeled 'open plan item'."""
-    hits: list[Hit] = []
+def plan_hits(config: RobinConfig, *, max_hits: int = 30) -> list[Hit]:
+    """Open plan items across the mirrors, as prompt hits labeled 'open plan item'.
+
+    Repos are interleaved round-robin so one long TODO cannot crowd the others out
+    of the budget (incident 2026-07-16: atp-platform's 34 items silently displaced
+    Maestro's 22). Truncation is disclosed via a trailing marker hit, never silent."""
     # Mirrors only — read_roots() also exposes var/digests (Robin's own outputs),
     # which must never masquerade as a repo plan.
+    per_repo: list[list[Hit]] = []
     for root in [config.vault_path, *config.repo_paths]:
+        items: list[Hit] = []
         for pattern in _PLAN_GLOBS:
             for path in sorted(root.glob(pattern)):
                 try:
@@ -77,12 +86,37 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 15) -> list[Hit]:
                 rel = f"{root.name}/{path.relative_to(root)}"
                 for number, line in enumerate(lines, 1):
                     if _UNCHECKED.match(line):
-                        hits.append(
+                        items.append(
                             Hit(rel, number, f"open plan item: {line.strip()[:220]}")
                         )
-                        if len(hits) >= max_hits:
-                            return hits
+        if items:
+            per_repo.append(items)
+    total = sum(len(items) for items in per_repo)
+    hits: list[Hit] = []
+    for rank in range(max((len(items) for items in per_repo), default=0)):
+        for items in per_repo:
+            if rank < len(items):
+                hits.append(items[rank])
+        if len(hits) >= max_hits:
+            break
+    hits = hits[:max_hits]
+    if total > len(hits):
+        hits.append(
+            Hit(
+                "(plan-items-truncated)",
+                1,
+                f"only {len(hits)} of {total} open plan items fit above — the plan "
+                "list is PARTIAL, not the full remaining work.",
+            )
+        )
     return hits
+
+
+def watched_repos_hit(config: RobinConfig) -> Hit:
+    """The complete set of repos the digest tools can see — grounds the 'quiet repos'
+    line and stops the model from naming repos it never checked (COVERAGE RULE)."""
+    names = ", ".join(root.name for root in [config.vault_path, *config.repo_paths])
+    return Hit("(watched-repos)", 1, f"repos visible to my tools this window: {names}")
 
 
 def _digest_dir(config: RobinConfig) -> Path:
@@ -130,7 +164,11 @@ def compose(
 ) -> tuple[str, list[Hit], float | None]:
     """Compose the digest text via the standard grounded pipeline."""
     period = window(config, kind, now=now)
-    sources = collect_changes(config, period, max_hits=60) + plan_hits(config)
+    sources = [
+        watched_repos_hit(config),
+        *collect_changes(config, period, max_hits=60),
+        *plan_hits(config),
+    ]
     question = _DIGEST_QUESTION.format(kind=kind, period=period.label)
     text, cost = _compose_answer(question, sources, config, rules=_DIGEST_RULES)
     return text, sources, cost

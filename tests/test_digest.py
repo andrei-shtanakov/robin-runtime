@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from robin.config import RobinConfig
-from robin.digest import latest, persist, plan_hits, window
+from robin.digest import latest, persist, plan_hits, watched_repos_hit, window
 from robin.liveness import stale_kinds
 
 NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
@@ -77,7 +77,43 @@ def test_plan_hits_caps_and_degrades_without_plans(tmp_path: Path) -> None:
     config = RobinConfig(
         vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
     )
-    assert len(plan_hits(config, max_hits=5)) == 5
+    hits = plan_hits(config, max_hits=5)
+    # truncation is disclosed, never silent (incident 2026-07-16)
+    assert len(hits) == 6
+    assert hits[-1].path == "(plan-items-truncated)"
+    assert "5 of 30" in hits[-1].text
+    # under the cap: no marker
+    assert plan_hits(config, max_hits=30)[-1].path == "repo/TODO.md"
+
+
+def test_plan_hits_round_robin_across_repos(tmp_path: Path) -> None:
+    # One long TODO must not crowd the other repos out of the budget.
+    long_repo = tmp_path / "long"
+    short_repo = tmp_path / "short"
+    long_repo.mkdir()
+    short_repo.mkdir()
+    (long_repo / "TODO.md").write_text("\n".join(f"- [ ] L{i}" for i in range(20)))
+    (short_repo / "TODO.md").write_text("- [ ] S0\n- [ ] S1\n")
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[long_repo, short_repo],
+        var_dir=tmp_path / "var",
+    )
+    hits = plan_hits(config, max_hits=6)
+    repos = {hit.path.split("/")[0] for hit in hits if not hit.path.startswith("(")}
+    assert repos == {"long", "short"}  # both represented despite the cap
+    assert [h.text[-2:] for h in hits[:4]] == ["L0", "S0", "L1", "S1"]  # interleaved
+
+
+def test_watched_repos_hit_lists_all_mirrors(tmp_path: Path) -> None:
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[tmp_path / "maestro", tmp_path / "arbiter"],
+        var_dir=tmp_path / "var",
+    )
+    hit = watched_repos_hit(config)
+    assert hit.path == "(watched-repos)"
+    assert "vault, maestro, arbiter" in hit.text
 
 
 def test_liveness_flags_missing_then_clears(tmp_path: Path) -> None:
