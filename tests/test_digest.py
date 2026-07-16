@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from robin.config import RobinConfig
-from robin.digest import latest, persist, window
+from robin.digest import latest, persist, plan_hits, window
 from robin.liveness import stale_kinds
 
 NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
@@ -47,6 +47,37 @@ def test_latest_returns_newest_digests_truncated(tmp_path: Path) -> None:
     # one prompt bullet per digest — persisted markdown is flattened
     assert all("\n" not in e for e in excerpts)
     assert "fresh multi-line day" in excerpts[0]
+
+
+def test_plan_hits_collects_only_unchecked_items(tmp_path: Path) -> None:
+    repo = tmp_path / "maestro"
+    (repo / "docs" / "plans").mkdir(parents=True)
+    (repo / "TODO.md").write_text(
+        "# Plan\n- [x] shipped thing\n- [ ] open thing\n* [ ] starred open thing\n- free-form note\n"
+    )
+    (repo / "docs" / "plans" / "m5.md").write_text("- [ ] milestone step\n")
+    config = RobinConfig(
+        vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
+    )
+    hits = plan_hits(config)
+    texts = [hit.text for hit in hits]
+    assert len(hits) == 3
+    assert all(text.startswith("open plan item: ") for text in texts)
+    assert not any("shipped thing" in text for text in texts)
+    assert not any("free-form note" in text for text in texts)
+    assert hits[0].path == "maestro/TODO.md" and hits[0].line == 3
+
+
+def test_plan_hits_caps_and_degrades_without_plans(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    assert plan_hits(config) == []  # no plan files anywhere — section grounding empty
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "TODO.md").write_text("\n".join("- [ ] item" for _ in range(30)))
+    config = RobinConfig(
+        vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
+    )
+    assert len(plan_hits(config, max_hits=5)) == 5
 
 
 def test_liveness_flags_missing_then_clears(tmp_path: Path) -> None:

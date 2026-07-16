@@ -176,12 +176,12 @@ def build_prompt(
     return "\n".join(lines)
 
 
-def _system_prompt(config: RobinConfig) -> str:
+def _system_prompt(config: RobinConfig, rules: str = _ANSWER_RULES) -> str:
     from . import learnings
 
     soul = config.vault_path / "soul.md"
     persona = soul.read_text(errors="ignore") if soul.is_file() else ""
-    prompt = f"{persona}\n\n---\n{_ANSWER_RULES}".strip()
+    prompt = f"{persona}\n\n---\n{rules}".strip()
     # §5 M4: human-promoted learnings MUST be loaded into every future session. The
     # block changes only on promotion, so the cache breakpoint stays effective.
     rules = learnings.load_promoted(config)
@@ -230,6 +230,7 @@ def _compose_answer(
     *,
     history: list[Turn] | None = None,
     ambient: Ambient | None = None,
+    rules: str = _ANSWER_RULES,
 ) -> tuple[str, float | None]:
     try:
         import anthropic
@@ -252,7 +253,7 @@ def _compose_answer(
         system=[
             {
                 "type": "text",
-                "text": _system_prompt(config),
+                "text": _system_prompt(config, rules),
                 "cache_control": {"type": "ephemeral"},
             }
         ],
