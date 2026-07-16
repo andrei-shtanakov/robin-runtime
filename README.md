@@ -18,7 +18,7 @@ Robin runs in **its own** directory. The knowledge repo and ecosystem repos are 
 all_ai_orchestrators/          (VPS: /srv/robin/ + mirrors/)
 ├── robin-runtime/     ← this repo (code + Robin's own store in var/)
 ├── prograph-vault/    ← knowledge repo (read-only mount)
-├── Maestro/ arbiter/ atp-platform/ …   ← ecosystem repos (read-only mounts)
+├── maestro/ arbiter/ atp-platform/ …   ← ecosystem repos (read-only mounts)
 └── _cowork_output/    ← dev-scratch — NEVER read at runtime
 ```
 

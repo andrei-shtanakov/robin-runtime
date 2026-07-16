@@ -7,7 +7,7 @@ Target layout (always-on VPS, ROBIN-SPEC slot 3):
 ├── robin-runtime/     ← this repo (code + .venv)
 ├── mirrors/           ← read-only git clones: prograph-vault + ecosystem repos
 │   ├── prograph-vault/
-│   ├── arbiter/ Maestro/ atp-platform/ …
+│   ├── arbiter/ maestro/ atp-platform/ …
 ├── var/               ← Robin's own store (interactions.jsonl, digests/, chats/)
 └── robin.env          ← ALL secrets (slot 17), chmod 600
 ```
