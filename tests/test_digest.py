@@ -62,12 +62,32 @@ def test_plan_hits_collects_only_unchecked_items(tmp_path: Path) -> None:
     hits = plan_hits(config)
     texts = [hit.text for hit in hits]
     assert len(hits) == 2
-    assert all(text.startswith("open plan item: ") for text in texts)
+    # the enclosing section heading is carried as plain-language context
+    assert all(text.startswith("open plan item (Plan): ") for text in texts)
     assert not any("shipped thing" in text for text in texts)
     assert not any("free-form note" in text for text in texts)
     # docs/plans/*.md are implementation micro-steps, not team-level plan items
     assert not any("milestone step" in text for text in texts)
     assert hits[0].path == "maestro/TODO.md" and hits[0].line == 3
+
+
+def test_plan_hits_tracks_current_heading(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "TODO.md").write_text(
+        "- [ ] before any heading\n"
+        "## **Судья (judge)**\n"
+        "- [ ] P4 + prefill\n"
+        "### Phase-1b\n"
+        "- [ ] ablation ticket\n"
+    )
+    config = RobinConfig(
+        vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
+    )
+    texts = [hit.text for hit in plan_hits(config)]
+    assert texts[0].startswith("open plan item: ")  # no heading yet — plain label
+    assert texts[1].startswith("open plan item (Судья (judge)): ")  # ** stripped
+    assert texts[2].startswith("open plan item (Phase-1b): ")  # nearest heading wins
 
 
 def test_plan_hits_caps_and_degrades_without_plans(tmp_path: Path) -> None:

@@ -53,7 +53,14 @@ _DIGEST_RULES = (
     "COVERAGE RULE: name only repos that appear in the SOURCES. The '(watched-repos)' "
     "source is the complete list of repos your tools can see — repos outside it were "
     "NOT checked, so never mention them, not even as quiet or unchanged. If the "
-    "SOURCES flag the plan list as partial, say the plan picture is incomplete."
+    "SOURCES flag the plan list as partial, say the plan picture is incomplete. "
+    "AUDIENCE RULE: the digest is read by a mixed team including non-engineers. "
+    "Summarize remaining plan work thematically, in plain language grounded in the "
+    "SOURCES — a few sentences per repo, not an item-by-item list. Internal shorthand "
+    "codes (P1, R-06b, M3-obs and the like) are not self-explanatory: never present "
+    "a code as the name of a work item — either drop the code or pair it with the "
+    "plain-language description the source gives. If a source line is only a code "
+    "with no explanation, fold it into the theme rather than quoting it verbatim."
 )
 
 # Plan grounding for section 2: open (unchecked) checklist items from each mirror's
@@ -64,6 +71,7 @@ _DIGEST_RULES = (
 # they flooded the count (221 items on 2026-07-16, mostly micro-steps).
 _PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
 _UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
+_HEADING = re.compile(r"^#{1,6}\s+(.+)")
 
 
 def plan_hits(config: RobinConfig, *, max_hits: int = 30) -> list[Hit]:
@@ -86,11 +94,21 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 30) -> list[Hit]:
                 except OSError:
                     continue
                 rel = f"{root.name}/{path.relative_to(root)}"
+                # Carry the enclosing markdown heading into each hit: checkbox lines
+                # alone are dev shorthand ("P4 + prefill"), and the section title is
+                # the plain-language context the AUDIENCE RULE needs to gloss them.
+                heading = ""
                 for number, line in enumerate(lines, 1):
+                    if match := _HEADING.match(line):
+                        heading = match.group(1).strip().strip("*").strip()[:60]
+                        continue
                     if _UNCHECKED.match(line):
-                        items.append(
-                            Hit(rel, number, f"open plan item: {line.strip()[:220]}")
+                        label = (
+                            f"open plan item ({heading}): "
+                            if heading
+                            else "open plan item: "
                         )
+                        items.append(Hit(rel, number, (label + line.strip())[:260]))
         if items:
             per_repo.append(items)
     total = sum(len(items) for items in per_repo)
