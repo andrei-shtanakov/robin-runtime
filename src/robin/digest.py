@@ -59,7 +59,10 @@ _DIGEST_RULES = (
 # Plan grounding for section 2: open (unchecked) checklist items from each mirror's
 # plan files. Checkbox syntax is the only machine-detectable "remaining work" marker;
 # repos without plan files simply contribute nothing and the section is omitted.
-_PLAN_GLOBS = ("TODO.md", "ROADMAP.md", "docs/plans/*.md")
+# docs/plans/*.md is deliberately excluded: those checklists are implementation
+# micro-steps ("add file X", "run targeted tests"), not team-level remaining work —
+# they flooded the count (221 items on 2026-07-16, mostly micro-steps).
+_PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
 _UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
 
 
