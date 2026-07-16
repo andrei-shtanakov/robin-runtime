@@ -61,10 +61,12 @@ def test_plan_hits_collects_only_unchecked_items(tmp_path: Path) -> None:
     )
     hits = plan_hits(config)
     texts = [hit.text for hit in hits]
-    assert len(hits) == 3
+    assert len(hits) == 2
     assert all(text.startswith("open plan item: ") for text in texts)
     assert not any("shipped thing" in text for text in texts)
     assert not any("free-form note" in text for text in texts)
+    # docs/plans/*.md are implementation micro-steps, not team-level plan items
+    assert not any("milestone step" in text for text in texts)
     assert hits[0].path == "maestro/TODO.md" and hits[0].line == 3
 
 
