@@ -63,7 +63,9 @@ _UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
 def plan_hits(config: RobinConfig, *, max_hits: int = 15) -> list[Hit]:
     """Open plan items across the mirrors, as prompt hits labeled 'open plan item'."""
     hits: list[Hit] = []
-    for root in config.read_roots():
+    # Mirrors only — read_roots() also exposes var/digests (Robin's own outputs),
+    # which must never masquerade as a repo plan.
+    for root in [config.vault_path, *config.repo_paths]:
         for pattern in _PLAN_GLOBS:
             for path in sorted(root.glob(pattern)):
                 try:
