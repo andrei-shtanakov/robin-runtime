@@ -45,8 +45,7 @@ _DIGEST_RULES = (
     "The digest is read by humans in a chat channel: do NOT include file paths, line "
     "numbers, commit hashes, document names, or any other source citations — plain "
     "prose only. "
-    "Write the digest twice: first in English, then the same content in Russian, "
-    "separated by a line containing only '---'. "
+    "Write the digest in Russian only. "
     "NEGATIVE EVIDENCE RULE: empty or irrelevant SOURCES are NEVER proof of absence. "
     "Never assert that something does not exist, did not happen, or 'there were no "
     "changes' merely because the SOURCES are silent — say that no activity is visible "
@@ -200,7 +199,10 @@ async def post(config: RobinConfig, text: str, kind: str) -> None:
     from telegram.error import BadRequest
 
     bot = Bot(config.telegram_token)
-    html = f"<b>Robin — {kind} digest</b>\n\n{fmt.escape_html(text)}"
+    kind_ru = {"daily": "дневной дайджест", "weekly": "недельный дайджест"}.get(
+        kind, f"{kind} digest"
+    )
+    html = f"<b>Robin — {kind_ru}</b>\n\n{fmt.escape_html(text)}"
     for part in fmt.chunk(html):
         try:
             await bot.send_message(config.telegram_channel, part, parse_mode="HTML")

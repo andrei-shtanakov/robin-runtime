@@ -23,6 +23,10 @@ _ECOSYSTEM_REPOS = (
     "deployer",
     "dispatcher",
     "steward",
+    "proctor",
+    "prograph",
+    "discovery",
+    "open-prose",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
     # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
     # the VPS mirror layout that is a separate read-only clone (the runtime checkout
