@@ -1,7 +1,7 @@
 """Read-only KB tool layer for Robin (ROBIN-SPEC §3 Tool Layer, §4 read-only).
 
 Searches the mounted knowledge repo and ecosystem repos. Never writes. Runs OUTSIDE the
-agent sandbox: the agent asks, the orchestrator (this module) executes. `_cowork_output/` is
+agent sandbox: the agent asks, the orchestrator (this module) executes. `_cowork_output/` is  (gov:allow-cowork)
 never read (ecosystem rule: runtime never reads dev-scratch; robin/duties.md).
 """
 
@@ -27,7 +27,7 @@ SKIP_DIRS = {
     "dist",
     ".worktrees",
     ".obsidian",
-    "_cowork_output",  # runtime MUST NOT read dev-scratch (ROBIN-SPEC; robin/duties.md)
+    "_cowork_output",  # runtime MUST NOT read dev-scratch (ROBIN-SPEC; robin/duties.md) gov:allow-cowork
 }
 MAX_FILE_BYTES = 512 * 1024
 
