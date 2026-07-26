@@ -24,6 +24,8 @@ from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
 from .kb import Hit
 from .log import setup_logging
+from .plan_state import delta_hit, open_items
+from .plan_state import record as record_plan_state
 
 logger = logging.getLogger("robin.digest")
 
@@ -36,9 +38,11 @@ _DIGEST_QUESTION = (
     "Write the {kind} ecosystem digest for the team, covering the digest window "
     "({period}). Structure: 1) what was DONE in each repo over the period (collapse "
     "near-duplicate commits; repos with no visible activity get one short collective "
-    "line); 2) what remains NOT done against the plan — only if open plan items appear "
-    "in the SOURCES, otherwise omit the section; 3) unresolved questions the changes "
-    "raise. Be concise."
+    "line); 2) how the plan MOVED since the previous digest — how many items opened "
+    "and closed and which ones, plus anything open unusually long — from the "
+    "'(plan-delta)' source, omitted if that source is absent; 3) what remains NOT done "
+    "against the plan — only if open plan items appear in the SOURCES, otherwise omit "
+    "the section; 4) unresolved questions the changes raise. Be concise."
 )
 
 # Digest-specific composition rules: replaces _ANSWER_RULES for this surface only.
@@ -59,6 +63,8 @@ _DIGEST_RULES = (
     "NOT checked, so never mention them, not even as quiet or unchanged. If the "
     "SOURCES flag the plan list or the change list as partial, say so — and name the "
     "repos the marker names as only partially covered, rather than warning in general. "
+    "If the plan-delta source says there is no previous snapshot, say the comparison "
+    "baseline is missing — never report that as 'nothing moved'. "
     "AUDIENCE RULE: the digest is read by a mixed team including non-engineers. "
     "Summarize remaining plan work thematically, in plain language grounded in the "
     "SOURCES — a few sentences per repo, not an item-by-item list. Internal shorthand "
@@ -73,15 +79,15 @@ _DIGEST_RULES = (
 # repos without plan files simply contribute nothing and the section is omitted.
 # docs/plans/*.md is deliberately excluded: those checklists are implementation
 # micro-steps ("add file X", "run targeted tests"), not team-level remaining work —
-# they flooded the count (221 items on 2026-07-16, mostly micro-steps).
-_PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
+# they flooded the count (221 items on 2026-07-16, mostly micro-steps). The globs and
+# the scanner live in plan_state, which also keeps the between-run snapshot — one
+# scanner, so the budgeted list and the delta counters cannot drift apart.
 # Plan files move on a weekly scale, so re-sending them every day produced two
 # consecutive daily digests whose prose was near-identical (report review 2026-07-26).
 # Section 2 is dropped from the prompt when no plan hits are present, so restricting
-# the source to the weekly digest makes the daily one a pure "what moved" delta.
+# the full list to the weekly digest makes the daily one a pure "what moved" delta —
+# the daily still carries the movement counters (plan_state.delta_hit).
 PLAN_SECTION_KINDS = ("weekly",)
-_UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
-_HEADING = re.compile(r"^#{1,6}\s+(.+)")
 
 
 def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
@@ -93,36 +99,20 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
     repos left partial — a bare "30 of 62" tells the reader the picture is incomplete
     but not where the hole is (report review 2026-07-26)."""
     # Mirrors only — read_roots() also exposes var/digests (Robin's own outputs),
-    # which must never masquerade as a repo plan.
-    per_repo: list[list[Hit]] = []
-    for root in [config.vault_path, *config.repo_paths]:
-        items: list[Hit] = []
-        for pattern in _PLAN_GLOBS:
-            for path in sorted(root.glob(pattern)):
-                try:
-                    lines = path.read_text(
-                        encoding="utf-8", errors="ignore"
-                    ).splitlines()
-                except OSError:
-                    continue
-                rel = f"{root.name}/{path.relative_to(root)}"
-                # Carry the enclosing markdown heading into each hit: checkbox lines
-                # alone are dev shorthand ("P4 + prefill"), and the section title is
-                # the plain-language context the AUDIENCE RULE needs to gloss them.
-                heading = ""
-                for number, line in enumerate(lines, 1):
-                    if match := _HEADING.match(line):
-                        heading = match.group(1).strip().strip("*").strip()[:60]
-                        continue
-                    if _UNCHECKED.match(line):
-                        label = (
-                            f"open plan item ({heading}): "
-                            if heading
-                            else "open plan item: "
-                        )
-                        items.append(Hit(rel, number, (label + line.strip())[:260]))
-        if items:
-            per_repo.append(items)
+    # which must never masquerade as a repo plan. plan_state.open_items() is the one
+    # scanner: the delta counters and this budgeted list must not drift apart.
+    grouped: dict[str, list[Hit]] = {}
+    for item in open_items(config):
+        # Carry the enclosing markdown heading into each hit: checkbox lines alone are
+        # dev shorthand ("P4 + prefill"), and the section title is the plain-language
+        # context the AUDIENCE RULE needs to gloss them.
+        label = (
+            f"open plan item ({item.heading}): " if item.heading else "open plan item: "
+        )
+        grouped.setdefault(item.path.split("/")[0], []).append(
+            Hit(item.path, item.line, (label + item.text)[:260])
+        )
+    per_repo = list(grouped.values())
     total = sum(len(items) for items in per_repo)
     hits: list[Hit] = []
     for rank in range(max((len(items) for items in per_repo), default=0)):
@@ -207,6 +197,8 @@ def compose(
         watched_repos_hit(config),
         *collect_changes(config, period, max_hits=CHANGE_HITS[kind]),
     ]
+    if movement := delta_hit(config, kind, now=now):
+        sources.append(movement)
     if kind in PLAN_SECTION_KINDS:
         sources += plan_hits(config, max_hits=config.plan_items_max)
     question = _DIGEST_QUESTION.format(kind=kind, period=period.label)
@@ -270,6 +262,10 @@ def run(kind: str) -> None:
     config = load_config()
     text, sources, cost = compose(config, kind)
     path = persist(config, kind, text)
+    # Baseline advances only after the digest is safely persisted — a failed run must
+    # not consume the movement it never reported. (A plan file edited between compose
+    # and here lands in the next window's delta, not this one's.)
+    record_plan_state(config, kind)
     logger.info("digest persisted: %s (%d sources, cost=%s)", path, len(sources), cost)
     asyncio.run(post(config, text, kind))
     # digest runs are interactions too (§7 cost observability)

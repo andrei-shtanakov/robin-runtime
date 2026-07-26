@@ -7,12 +7,15 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from robin.config import RobinConfig
 from robin.digest import (
     compose,
     latest,
     persist,
     plan_hits,
+    run,
     watched_repos_hit,
     window,
 )
@@ -156,10 +159,53 @@ def test_daily_digest_carries_no_plan_items(tmp_path: Path, monkeypatch) -> None
     # digests near-identical prose with no delta (report review 2026-07-26).
     _capture_sources(monkeypatch)
     config = _repo_with_plan(tmp_path)
+    # The item-list label, not the word: the delta counter legitimately reports how
+    # many items are open, it just does not enumerate them.
     _, sources, _ = compose(config, "daily", now=NOW)
-    assert not any("open plan item" in hit.text for hit in sources)
+    assert not any(hit.text.startswith("open plan item") for hit in sources)
     _, weekly_sources, _ = compose(config, "weekly", now=NOW)
-    assert any("open plan item" in hit.text for hit in weekly_sources)
+    assert any(hit.text.startswith("open plan item") for hit in weekly_sources)
+
+
+def test_daily_digest_carries_the_plan_delta(tmp_path: Path, monkeypatch) -> None:
+    # The daily digest drops the full plan list but must still report movement —
+    # that is what makes it a delta rather than a shorter copy of the weekly.
+    _capture_sources(monkeypatch)
+    config = _repo_with_plan(tmp_path, items=3)
+    _, sources, _ = compose(config, "daily", now=NOW)
+    movement = [hit for hit in sources if hit.path == "(plan-delta)"]
+    assert len(movement) == 1
+    assert "3 open plan item" in movement[0].text
+
+
+def test_run_advances_the_baseline_only_after_persisting(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # The snapshot is the digest's memory: advancing it on a run that never reached
+    # the team would silently swallow a window's movement.
+    _capture_sources(monkeypatch)
+    monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
+    monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
+    (tmp_path / "vault").mkdir()
+    maestro = tmp_path / "Maestro"  # a name load_config() discovers as a mirror
+    maestro.mkdir()
+    (maestro / "TODO.md").write_text("- [ ] first item\n")
+    state = tmp_path / "var" / "plan-state-daily.json"
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("channel down")
+
+    monkeypatch.setattr("robin.digest.persist", explode)
+    with pytest.raises(RuntimeError):
+        run("daily")
+    assert not state.is_file()  # failed run leaves the baseline where it was
+
+    monkeypatch.undo()
+    _capture_sources(monkeypatch)
+    monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
+    monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
+    run("daily")
+    assert "first item" in state.read_text()
 
 
 def test_weekly_plan_budget_is_configurable(tmp_path: Path, monkeypatch) -> None:
