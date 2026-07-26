@@ -18,7 +18,10 @@ from zoneinfo import ZoneInfo
 from .config import RobinConfig
 from .kb import Hit
 
-MAX_COMMITS_PER_REPO = 30
+# Safety valve, not the real budget: collect_changes() interleaves repos round-robin,
+# so the global cap is what bounds the prompt. Sized for a busy repo's week (deployer
+# passed 30 in the 07-20 window and silently lost the remainder).
+MAX_COMMITS_PER_REPO = 60
 MAX_DIRTY_FILES = 20  # per repo; overflow is flagged, never silently dropped
 _GIT_TIMEOUT_S = 30
 
@@ -120,7 +123,13 @@ class Commit:
     stat: str  # "N files changed, +A/-B" summary line
 
 
-def git_log(repo, since: datetime, until: datetime | None) -> list[Commit]:
+def git_log(
+    repo,
+    since: datetime,
+    until: datetime | None,
+    *,
+    max_commits: int = MAX_COMMITS_PER_REPO,
+) -> list[Commit]:
     """Read-only `git log` over one mirror; empty list when git fails or repo is not one."""
     args = [
         "git",
@@ -132,7 +141,7 @@ def git_log(repo, since: datetime, until: datetime | None) -> list[Commit]:
         f"--since={since.isoformat()}",
         "--shortstat",
         "--pretty=format:%x1e%h%x1f%ad%x1f%an%x1f%s",
-        f"--max-count={MAX_COMMITS_PER_REPO}",
+        f"--max-count={max_commits}",
     ]
     if until is not None:
         args.append(f"--until={until.isoformat()}")
@@ -232,21 +241,54 @@ def journal_entries(
     return hits
 
 
+def _interleave(per_repo: list[list[Hit]], budget: int) -> list[Hit]:
+    """Round-robin across repos, so a busy repo cannot spend the whole budget and
+    leave a quiet-looking hole where another repo's commits were (cf. plan_hits)."""
+    hits: list[Hit] = []
+    for rank in range(max((len(items) for items in per_repo), default=0)):
+        for items in per_repo:
+            if rank < len(items):
+                hits.append(items[rank])
+        if len(hits) >= budget:
+            break
+    return hits[:budget]
+
+
 def collect_changes(
     config: RobinConfig, period: Period, *, max_hits: int = 40
 ) -> list[Hit]:
     """Change evidence for the period: commits per mirror (as repo@sha hits) +
-    uncommitted working-tree state + journals."""
-    hits: list[Hit] = []
-    repos = [config.vault_path, *config.repo_paths]
-    for repo in repos:
-        for commit in git_log(repo, period.since, period.until):
+    uncommitted working-tree state + journals.
+
+    `max_hits` budgets the commit stream only. Working-tree and journal hits are
+    bounded by construction (one per repo / ten) and are always kept: they are the
+    evidence `git log` cannot show, and a trailing slice used to drop them first."""
+    per_repo: list[list[Hit]] = []
+    capped_repos: list[str] = []
+    total_commits = 0
+    for repo in [config.vault_path, *config.repo_paths]:
+        # One over the cap is fetched as an overflow probe: the per-repo limit is a
+        # budget, not a claim that the repo's history ended there.
+        commits = git_log(
+            repo, period.since, period.until, max_commits=MAX_COMMITS_PER_REPO + 1
+        )
+        if len(commits) > MAX_COMMITS_PER_REPO:
+            capped_repos.append(repo.name)
+            commits = commits[:MAX_COMMITS_PER_REPO]
+        items: list[Hit] = []
+        for commit in commits:
             text = f"{commit.date} {commit.author}: {commit.subject}"
             if commit.stat:
                 text += f" ({commit.stat})"
-            hits.append(Hit(f"{repo.name}@{commit.sha}", 1, text[:240]))
+            items.append(Hit(f"{repo.name}@{commit.sha}", 1, text[:240]))
+        if items:
+            per_repo.append(items)
+            total_commits += len(items)
+    hits = _interleave(per_repo, max_hits)
     dirty = uncommitted(config)
-    if not hits and not dirty:
+    # Keyed on what was found, not on what fit the budget: a window whose commits were
+    # all budgeted out is a truncated window, not an empty one.
+    if not total_commits and not dirty:
         # Negative evidence, spelled out for the answer layer: this is a statement
         # about what the mirrors show, not proof that nothing happened.
         hits.append(
@@ -258,9 +300,25 @@ def collect_changes(
                 f"nothing changed elsewhere.",
             )
         )
+    if total_commits > len(hits) or capped_repos:
+        parts = []
+        if total_commits > len(hits):
+            parts.append(
+                f"only {len(hits)} of {total_commits} commits in the window fit above"
+            )
+        if capped_repos:
+            parts.append(f"per-repo history cap hit in: {', '.join(capped_repos)}")
+        hits.append(
+            Hit(
+                "(changes-truncated)",
+                1,
+                f"{'; '.join(parts)} — the change list is PARTIAL, not the full "
+                "activity of the window.",
+            )
+        )
     hits += dirty
     hits += journal_entries(config, period)
-    return hits[:max_hits]
+    return hits
 
 
 def _main() -> None:

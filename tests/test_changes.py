@@ -121,6 +121,79 @@ def test_collect_changes_cites_repo_at_sha(tmp_path: Path) -> None:
     assert any("routing fix" in hit.text for hit in hits)
 
 
+def test_collect_changes_flags_commit_truncation(tmp_path: Path) -> None:
+    # Silent truncation is the negative-evidence bug in miniature: a dropped repo
+    # reads as a quiet repo. Every other truncation here is disclosed; this one was not.
+    vault = tmp_path / "vault"
+    arbiter = tmp_path / "arbiter"
+    _make_repo(vault, [(f"2026-07-08T10:{i:02}:00+00:00", f"v{i}") for i in range(6)])
+    _make_repo(arbiter, [(f"2026-07-08T11:{i:02}:00+00:00", f"a{i}") for i in range(6)])
+    config = RobinConfig(
+        vault_path=vault, repo_paths=[arbiter], var_dir=tmp_path / "var"
+    )
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
+    hits = collect_changes(config, period, max_hits=4)
+    paths = [hit.path for hit in hits]
+    assert "(changes-truncated)" in paths
+    marker = next(hit for hit in hits if hit.path == "(changes-truncated)")
+    assert "of 12" in marker.text
+    # both repos survive the cap — no repo silently vanishes from the window
+    assert any(p.startswith("vault@") for p in paths)
+    assert any(p.startswith("arbiter@") for p in paths)
+
+
+def test_collect_changes_keeps_working_tree_under_commit_pressure(
+    tmp_path: Path,
+) -> None:
+    # Commits must not crowd out uncommitted state: the trailing slice used to drop
+    # dirty-tree and journal hits first, exactly the evidence git log cannot show.
+    vault = tmp_path / "vault"
+    _make_repo(vault, [(f"2026-07-08T10:{i:02}:00+00:00", f"c{i}") for i in range(8)])
+    (vault / "draft.md").write_text("work in progress")
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
+    hits = collect_changes(config, period, max_hits=4)
+    assert "vault@working-tree" in [hit.path for hit in hits]
+
+
+def test_collect_changes_flags_per_repo_commit_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # MAX_COMMITS_PER_REPO used to cut a busy repo's history with no disclosure.
+    from robin import changes as changes_module
+
+    monkeypatch.setattr(changes_module, "MAX_COMMITS_PER_REPO", 2)
+    vault = tmp_path / "vault"
+    _make_repo(vault, [(f"2026-07-08T10:{i:02}:00+00:00", f"c{i}") for i in range(5)])
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
+    hits = collect_changes(config, period)
+    marker = next(hit for hit in hits if hit.path == "(changes-truncated)")
+    assert "vault" in marker.text  # the partial repo is named, not just counted
+
+
+def test_collect_changes_never_calls_a_budgeted_out_window_empty(
+    tmp_path: Path,
+) -> None:
+    # The negative-evidence marker must depend on what was FOUND, not on what fit the
+    # budget — otherwise a zero budget reports a busy window as "no changes" (Copilot
+    # review, PR #20).
+    vault = tmp_path / "vault"
+    _make_repo(vault, [("2026-07-08T10:00:00+00:00", "real work")])
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
+    hits = collect_changes(config, period, max_hits=0)
+    assert "(no-changes-found)" not in [hit.path for hit in hits]
+
+
 def test_collect_changes_reports_empty_window_as_negative_evidence(
     tmp_path: Path,
 ) -> None:

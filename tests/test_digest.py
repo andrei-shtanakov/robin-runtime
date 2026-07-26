@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from robin.config import RobinConfig
-from robin.digest import latest, persist, plan_hits, watched_repos_hit, window
+from robin.digest import (
+    compose,
+    latest,
+    persist,
+    plan_hits,
+    watched_repos_hit,
+    window,
+)
 from robin.liveness import stale_kinds
 
 NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
@@ -125,6 +133,81 @@ def test_plan_hits_round_robin_across_repos(tmp_path: Path) -> None:
     repos = {hit.path.split("/")[0] for hit in hits if not hit.path.startswith("(")}
     assert repos == {"long", "short"}  # both represented despite the cap
     assert [h.text[-2:] for h in hits[:4]] == ["L0", "S0", "L1", "S1"]  # interleaved
+
+
+def _repo_with_plan(tmp_path: Path, items: int = 40) -> RobinConfig:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "TODO.md").write_text("\n".join(f"- [ ] item {i}" for i in range(items)))
+    return RobinConfig(
+        vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
+    )
+
+
+def _capture_sources(monkeypatch) -> None:
+    """Stub the single LLM call site — compose() returns its sources verbatim."""
+    monkeypatch.setattr(
+        "robin.digest._compose_answer", lambda *args, **kwargs: ("digest text", 0.0)
+    )
+
+
+def test_daily_digest_carries_no_plan_items(tmp_path: Path, monkeypatch) -> None:
+    # Plan files move on a weekly scale; re-sending them daily made consecutive daily
+    # digests near-identical prose with no delta (report review 2026-07-26).
+    _capture_sources(monkeypatch)
+    config = _repo_with_plan(tmp_path)
+    _, sources, _ = compose(config, "daily", now=NOW)
+    assert not any("open plan item" in hit.text for hit in sources)
+    _, weekly_sources, _ = compose(config, "weekly", now=NOW)
+    assert any("open plan item" in hit.text for hit in weekly_sources)
+
+
+def test_weekly_plan_budget_is_configurable(tmp_path: Path, monkeypatch) -> None:
+    # The default budget must cover the ecosystem's real open-item count, and the
+    # knob must be pinnable per deployment like every other runtime limit.
+    _capture_sources(monkeypatch)
+    config = _repo_with_plan(tmp_path, items=40)
+    _, sources, _ = compose(config, "weekly", now=NOW)
+    assert not any(hit.path == "(plan-items-truncated)" for hit in sources)
+    tight = replace(config, plan_items_max=5)
+    _, tight_sources, _ = compose(tight, "weekly", now=NOW)
+    assert any(hit.path == "(plan-items-truncated)" for hit in tight_sources)
+
+
+def test_weekly_digest_gets_a_larger_change_budget(tmp_path: Path, monkeypatch) -> None:
+    # A week holds ~7x a day's commits (83 across the mirrors in the 07-20 window vs a
+    # 60-hit budget): one flat budget makes the weekly digest permanently "PARTIAL".
+    _capture_sources(monkeypatch)
+    budgets: dict[str, int] = {}
+
+    def record(config, period, *, max_hits):
+        budgets[period.label] = max_hits
+        return []
+
+    monkeypatch.setattr("robin.digest.collect_changes", record)
+    config = _repo_with_plan(tmp_path)
+    compose(config, "daily", now=NOW)
+    compose(config, "weekly", now=NOW)
+    assert budgets["weekly digest window"] > budgets["daily digest window"]
+
+
+def test_plan_truncation_marker_names_partial_repos(tmp_path: Path) -> None:
+    # "30 of 62" alone leaves the reader unable to tell which repos are partial.
+    long_repo = tmp_path / "long"
+    short_repo = tmp_path / "short"
+    long_repo.mkdir()
+    short_repo.mkdir()
+    (long_repo / "TODO.md").write_text("\n".join(f"- [ ] L{i}" for i in range(20)))
+    (short_repo / "TODO.md").write_text("- [ ] S0\n")
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[long_repo, short_repo],
+        var_dir=tmp_path / "var",
+    )
+    marker = plan_hits(config, max_hits=6)[-1]
+    assert marker.path == "(plan-items-truncated)"
+    assert "long" in marker.text  # the partial repo is named
+    assert "short" not in marker.text  # fully covered repos are not flagged
 
 
 def test_watched_repos_hit_lists_all_mirrors(tmp_path: Path) -> None:

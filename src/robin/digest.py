@@ -13,6 +13,7 @@ import logging
 import re
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,6 +28,9 @@ from .log import setup_logging
 logger = logging.getLogger("robin.digest")
 
 CADENCE_HOURS = {"daily": 24, "weekly": 24 * 7}
+# Commit hits per digest, sized to the window: the mirrors produced 83 commits in the
+# 07-13→07-20 week, so one flat budget left the weekly digest permanently truncated.
+CHANGE_HITS = {"daily": 60, "weekly": 150}
 
 _DIGEST_QUESTION = (
     "Write the {kind} ecosystem digest for the team, covering the digest window "
@@ -53,7 +57,8 @@ _DIGEST_RULES = (
     "COVERAGE RULE: name only repos that appear in the SOURCES. The '(watched-repos)' "
     "source is the complete list of repos your tools can see — repos outside it were "
     "NOT checked, so never mention them, not even as quiet or unchanged. If the "
-    "SOURCES flag the plan list as partial, say the plan picture is incomplete. "
+    "SOURCES flag the plan list or the change list as partial, say so — and name the "
+    "repos the marker names as only partially covered, rather than warning in general. "
     "AUDIENCE RULE: the digest is read by a mixed team including non-engineers. "
     "Summarize remaining plan work thematically, in plain language grounded in the "
     "SOURCES — a few sentences per repo, not an item-by-item list. Internal shorthand "
@@ -70,16 +75,23 @@ _DIGEST_RULES = (
 # micro-steps ("add file X", "run targeted tests"), not team-level remaining work —
 # they flooded the count (221 items on 2026-07-16, mostly micro-steps).
 _PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
+# Plan files move on a weekly scale, so re-sending them every day produced two
+# consecutive daily digests whose prose was near-identical (report review 2026-07-26).
+# Section 2 is dropped from the prompt when no plan hits are present, so restricting
+# the source to the weekly digest makes the daily one a pure "what moved" delta.
+PLAN_SECTION_KINDS = ("weekly",)
 _UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+\S")
 _HEADING = re.compile(r"^#{1,6}\s+(.+)")
 
 
-def plan_hits(config: RobinConfig, *, max_hits: int = 30) -> list[Hit]:
+def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
     """Open plan items across the mirrors, as prompt hits labeled 'open plan item'.
 
     Repos are interleaved round-robin so one long TODO cannot crowd the others out
     of the budget (incident 2026-07-16: atp-platform's 34 items silently displaced
-    Maestro's 22). Truncation is disclosed via a trailing marker hit, never silent."""
+    Maestro's 22). Truncation is disclosed via a trailing marker hit that names the
+    repos left partial — a bare "30 of 62" tells the reader the picture is incomplete
+    but not where the hole is (report review 2026-07-26)."""
     # Mirrors only — read_roots() also exposes var/digests (Robin's own outputs),
     # which must never masquerade as a repo plan.
     per_repo: list[list[Hit]] = []
@@ -121,12 +133,19 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 30) -> list[Hit]:
             break
     hits = hits[:max_hits]
     if total > len(hits):
+        shown = Counter(hit.path.split("/")[0] for hit in hits)
+        partial = [
+            items[0].path.split("/")[0]
+            for items in per_repo
+            if shown[items[0].path.split("/")[0]] < len(items)
+        ]
         hits.append(
             Hit(
                 "(plan-items-truncated)",
                 1,
                 f"only {len(hits)} of {total} open plan items fit above — the plan "
-                "list is PARTIAL, not the full remaining work.",
+                "list is PARTIAL, not the full remaining work. Repos shown only in "
+                f"part: {', '.join(partial)}.",
             )
         )
     return hits
@@ -186,9 +205,10 @@ def compose(
     period = window(config, kind, now=now)
     sources = [
         watched_repos_hit(config),
-        *collect_changes(config, period, max_hits=60),
-        *plan_hits(config),
+        *collect_changes(config, period, max_hits=CHANGE_HITS[kind]),
     ]
+    if kind in PLAN_SECTION_KINDS:
+        sources += plan_hits(config, max_hits=config.plan_items_max)
     question = _DIGEST_QUESTION.format(kind=kind, period=period.label)
     text, cost = _compose_answer(question, sources, config, rules=_DIGEST_RULES)
     return text, sources, cost
