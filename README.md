@@ -31,6 +31,7 @@ all_ai_orchestrators/          (VPS: /srv/robin/ + mirrors/)
 | `src/robin/agent.py` | the single LLM call site (direct `anthropic` SDK — slot 2, maintainer decision 2026-07-09): routed retrieval → grounded cited answer + append-only log (§7) |
 | `src/robin/changes.py` | "what changed?" retrieval: period parsing (RU/EN) + `git log` over mirrors + vault journals |
 | `src/robin/digest.py` | daily/weekly digest duty → Telegram channel + `var/digests/` (M2) |
+| `src/robin/plan_state.py` | open plan items + per-cadence snapshot → what *moved* since the previous digest (`var/plan-state-<kind>.json`) |
 | `src/robin/guard.py` | §7 daily budget cap, per-user rate limit, `/cost` report |
 | `src/robin/memory.py` | per-chat rolling window, last N turns (slots 12–14) |
 | `src/robin/gaps.py` | stage-2 failure log: zero-retrieval / reformulation / `/gap` / 👎 → `var/gaps.jsonl` |
