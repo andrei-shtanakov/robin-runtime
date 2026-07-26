@@ -113,23 +113,40 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     used to do so silently, which made a partial forward-look read as an ecosystem-wide
     one: on 2026-07-26 only 6 of 12 mirrors carried a plan file, 5 of them had anything
     open, and 56 of the 62 items came from two. An all-checked plan file counts as
-    covered —
-    that is a maintained plan that happens to be empty, not a missing one."""
-    missing = [
-        root.name
-        for root in [config.vault_path, *config.repo_paths]
-        if next(_plan_files(root), None) is None
-    ]
+    covered — that is a maintained plan that happens to be empty, not a missing one.
+
+    Mirrors in `config.plan_exempt` are not expected to keep a plan (a knowledge base
+    is not a project with work), so they leave the denominator instead of being
+    reported as a gap every run — but the exemption is stated, because shrinking the
+    denominator in silence is the failure this marker exists to catch."""
+    mirrors = [config.vault_path, *config.repo_paths]
+    names = {root.name for root in mirrors}
+    # Only exemptions that actually matched may be claimed as applied: echoing a typo
+    # as "exempt, not counted" while the real repo stays in the gap list would make
+    # the honesty marker itself lie.
+    applied = [name for name in config.plan_exempt if name in names]
+    unknown = [name for name in config.plan_exempt if name not in names]
+    expected = [root for root in mirrors if root.name not in applied]
+    missing = [root.name for root in expected if next(_plan_files(root), None) is None]
     if not missing:
         return None
-    total = 1 + len(config.repo_paths)
+    exempted = (
+        f" Exempt by configuration, not counted: {', '.join(applied)}."
+        if applied
+        else ""
+    )
+    if unknown:
+        exempted += (
+            f" Configured exemptions matching no mirror, ignored: {', '.join(unknown)}."
+        )
     return Hit(
         "(plan-coverage)",
         1,
-        f"plan files exist in {total - len(missing)} of {total} mirrors; no plan file "
-        f"in: {', '.join(missing)}. Remaining work in those repos is INVISIBLE to this "
-        "digest — they contribute nothing to any plan source, in either cadence, and "
-        "that silence is not evidence that they have nothing left to do.",
+        f"plan files exist in {len(expected) - len(missing)} of {len(expected)} "
+        f"mirrors; no plan file in: {', '.join(missing)}. Remaining work in those "
+        "repos is INVISIBLE to this digest — they contribute nothing to any plan "
+        "source, in either cadence, and that silence is not evidence that they have "
+        f"nothing left to do.{exempted}",
     )
 
 

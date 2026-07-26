@@ -52,6 +52,12 @@ class RobinConfig:
     # open-item count (62 across 12 repos on 2026-07-26) so the "plan picture is
     # incomplete" disclaimer reflects a genuine overflow, not a too-tight budget.
     plan_items_max: int = 80
+    # Mirrors (by directory name) that are not expected to keep a plan file — a
+    # knowledge base is not a project with work. They leave the coverage denominator
+    # instead of being reported as a gap every run; the digest still says they were
+    # exempted. Exempt means "not expected to keep one", not "ignore the one it has":
+    # if such a repo does carry a plan file, its items still reach the digest.
+    plan_exempt: tuple[str, ...] = ()
 
     # slot 1: Telegram surface. Secrets env-only (slot 17); non-secrets kept here too so
     # every adapter reads one object.
@@ -110,6 +116,11 @@ def load_config() -> RobinConfig:
         tz=os.environ.get("ROBIN_TZ", "UTC"),
         digest_grace_hours=int(os.environ.get("ROBIN_DIGEST_GRACE_HOURS", "6")),
         plan_items_max=int(os.environ.get("ROBIN_PLAN_ITEMS_MAX", "80")),
+        plan_exempt=tuple(
+            name.strip()
+            for name in os.environ.get("ROBIN_PLAN_EXEMPT", "").split(",")
+            if name.strip()
+        ),
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_channel=os.environ.get("ROBIN_TELEGRAM_CHANNEL") or None,
         maintainer_chat=os.environ.get("ROBIN_MAINTAINER_CHAT") or None,

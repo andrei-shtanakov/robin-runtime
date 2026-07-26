@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -92,6 +93,60 @@ def test_an_unreadable_plan_file_is_not_coverage(
     assert open_items(config) and all(i.repo != "vault" for i in open_items(config))
     hit = coverage_hit(config)
     assert hit is not None and "vault" in hit.text
+
+
+def test_exempt_mirrors_leave_the_coverage_expectation(tmp_path: Path) -> None:
+    # A knowledge base is not a project with work (prograph-vault, owner ruling
+    # 2026-07-26): reporting it as a gap every run turns an honesty marker into noise.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    exempt = replace(config, plan_exempt=("vault",))
+    assert coverage_hit(config) is not None  # without the exemption it is a gap
+    assert (
+        coverage_hit(exempt) is None
+    )  # every mirror that is expected to have one does
+
+
+def test_exemptions_are_disclosed_not_silent(tmp_path: Path) -> None:
+    # Shrinking the denominator without saying so is the silent-partial failure this
+    # whole marker exists to prevent.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "deployer").mkdir()
+    config = replace(
+        config,
+        repo_paths=[tmp_path / "maestro", tmp_path / "deployer"],
+        plan_exempt=("vault",),
+    )
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "1 of 2" in hit.text  # the exempt mirror left the denominator
+    assert "deployer" in hit.text
+    # ...and it is said out loud rather than dropping out of the count in silence
+    assert "vault" in hit.text and "exempt" in hit.text.lower()
+
+
+def test_an_exemption_matching_no_mirror_is_reported_as_ignored(tmp_path: Path) -> None:
+    # A typo used to be echoed as "exempt, not counted" while the real repo stayed in
+    # the gap list — the honesty marker itself lying (Copilot, PR #24).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    config = replace(config, plan_exempt=("vualt",))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "vault" in hit.text  # the real mirror is still counted as a gap
+    assert "1 of 2" in hit.text  # ...and still in the denominator
+    assert "vualt" in hit.text and "ignored" in hit.text.lower()
+    assert "not counted: vualt" not in hit.text  # never claimed as applied
+
+
+def test_exemption_does_not_hide_items_a_repo_does_have(tmp_path: Path) -> None:
+    # Exempt means "not expected to keep a plan", not "ignore its plan": if the repo
+    # starts keeping one, its items must still reach the digest.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    config = replace(config, plan_exempt=("maestro",))
+    assert [item.text for item in open_items(config)] == ["alpha"]
 
 
 def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
