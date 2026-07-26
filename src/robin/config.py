@@ -18,10 +18,11 @@ _DEFAULT_VAR = Path(__file__).resolve().parents[2] / "var"
 # Canonical repo names, which are also the mirror directory names: a plain `git clone`
 # names the directory after the repo, so anything else here goes silently blind on every
 # checkout that was cloned that way. `maestro` and `libretto` were renamed 2026-07-16 and
-# this list kept the old names until 2026-07-26 — Maestro and libretto were absent from
-# the digest on every teammate's machine, while GitHub's redirect kept the VPS mirrors
-# working under their dead names. Keep in sync with deploy/setup.sh (test_config asserts
-# it) and prefer canonical names over whatever a redirect still resolves.
+# this list kept the old names until 2026-07-26: both were absent from the digest on every
+# teammate's machine, while GitHub's redirect kept the VPS mirrors working under their dead
+# names. Names here are paths, so they stay lowercase even where the product brand is not
+# (`maestro` the directory, Maestro the orchestrator). Keep in sync with deploy/setup.sh
+# (test_config asserts it) and prefer canonical names over whatever a redirect resolves.
 _ECOSYSTEM_REPOS = (
     "atp-platform",
     "maestro",
