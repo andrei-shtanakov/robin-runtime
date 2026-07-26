@@ -262,12 +262,12 @@ def run(kind: str) -> None:
     config = load_config()
     text, sources, cost = compose(config, kind)
     path = persist(config, kind, text)
-    # Baseline advances only after the digest is safely persisted — a failed run must
-    # not consume the movement it never reported. (A plan file edited between compose
-    # and here lands in the next window's delta, not this one's.)
-    record_plan_state(config, kind)
     logger.info("digest persisted: %s (%d sources, cost=%s)", path, len(sources), cost)
     asyncio.run(post(config, text, kind))
+    # Baseline advances only once the digest has reached the team — persisting is not
+    # delivery, and a run that died in post() must re-report its movement next time.
+    # (A plan file edited between compose and here lands in the next window's delta.)
+    record_plan_state(config, kind)
     # digest runs are interactions too (§7 cost observability)
     config.var_dir.mkdir(parents=True, exist_ok=True)
     record = {

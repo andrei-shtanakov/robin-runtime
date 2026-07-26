@@ -178,32 +178,40 @@ def test_daily_digest_carries_the_plan_delta(tmp_path: Path, monkeypatch) -> Non
     assert "3 open plan item" in movement[0].text
 
 
-def test_run_advances_the_baseline_only_after_persisting(
-    tmp_path: Path, monkeypatch
-) -> None:
-    # The snapshot is the digest's memory: advancing it on a run that never reached
-    # the team would silently swallow a window's movement.
+def _digest_env(tmp_path: Path, monkeypatch) -> Path:
+    """A workspace load_config() discovers, plus a stubbed LLM call site."""
     _capture_sources(monkeypatch)
     monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
     monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
-    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault").mkdir(exist_ok=True)
     maestro = tmp_path / "Maestro"  # a name load_config() discovers as a mirror
-    maestro.mkdir()
+    maestro.mkdir(exist_ok=True)
     (maestro / "TODO.md").write_text("- [ ] first item\n")
-    state = tmp_path / "var" / "plan-state-daily.json"
+    return tmp_path / "var" / "plan-state-daily.json"
 
-    def explode(*args, **kwargs):
-        raise RuntimeError("channel down")
 
-    monkeypatch.setattr("robin.digest.persist", explode)
+def _explode(*args, **kwargs):
+    raise RuntimeError("channel down")
+
+
+@pytest.mark.parametrize("failing_step", ["robin.digest.persist", "robin.digest.post"])
+def test_run_advances_the_baseline_only_after_the_digest_reaches_the_team(
+    tmp_path: Path, monkeypatch, failing_step: str
+) -> None:
+    # The snapshot is the digest's memory. Advancing it on a run that never reached the
+    # team would silently swallow a window's movement — including a failed post(), not
+    # just a failed persist() (Copilot review, PR #21).
+    state = _digest_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(failing_step, _explode)
     with pytest.raises(RuntimeError):
         run("daily")
     assert not state.is_file()  # failed run leaves the baseline where it was
 
-    monkeypatch.undo()
-    _capture_sources(monkeypatch)
-    monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
-    monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
+
+def test_run_records_the_baseline_after_a_clean_run(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state = _digest_env(tmp_path, monkeypatch)
     run("daily")
     assert "first item" in state.read_text()
 

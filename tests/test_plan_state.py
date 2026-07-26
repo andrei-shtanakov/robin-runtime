@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from robin.config import RobinConfig
 from robin.plan_state import delta_hit, open_items, record
 
@@ -102,6 +104,30 @@ def test_corrupt_snapshot_degrades_to_first_run(tmp_path: Path) -> None:
     (config.var_dir / "plan-state-daily.json").write_text("{not json")
     hit = delta_hit(config, "daily", now=NOW + timedelta(days=1))
     assert "no previous snapshot" in hit.text  # never a false "nothing moved"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"version": 1, "items": {"k": "not-an-entry"}}',  # entry is not a mapping
+        '{"version": 1, "items": {"k": {"text": "a"}}}',  # no first_seen to age from
+        '{"version": 1, "items": {"k": {"first_seen": 100}}}',  # no text to name
+        '{"version": 1, "items": {"k": {"text": "a", "first_seen": "yesterday"}}}',
+        '{"version": 99, "items": {}}',  # written by a future format
+        '{"version": 1, "items": []}',  # items is not a mapping
+    ],
+)
+def test_structurally_invalid_snapshot_degrades_to_first_run(
+    tmp_path: Path, payload: str
+) -> None:
+    # Parsing is not validation: a snapshot that loads but has the wrong shape used to
+    # crash the next delta instead of degrading (Copilot review, PR #21).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    config.var_dir.mkdir(parents=True, exist_ok=True)
+    (config.var_dir / "plan-state-daily.json").write_text(payload)
+    hit = delta_hit(config, "daily", now=NOW)
+    assert "no previous snapshot" in hit.text
+    record(config, "daily", now=NOW)  # and recording over it must not crash either
 
 
 def test_record_carries_first_seen_across_runs(tmp_path: Path) -> None:

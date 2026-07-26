@@ -108,9 +108,22 @@ def load_state(config: RobinConfig, kind: str) -> dict[str, dict] | None:
         return None
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
-        return dict(state["items"])
+        items = state["items"]
+        # Parsing is not validation: a snapshot that loads but has the wrong shape
+        # would crash the next delta instead of degrading. A partial write costs one
+        # cadence of comparison, which is the cheap failure — a crash is not.
+        if state.get("version") != _STATE_VERSION or not isinstance(items, dict):
+            raise ValueError(f"unsupported snapshot version/shape in {path}")
+        for entry in items.values():
+            if (
+                not isinstance(entry, dict)
+                or not isinstance(entry.get("first_seen"), int)
+                or not isinstance(entry.get("text"), str)
+            ):
+                raise ValueError(f"malformed snapshot entry in {path}")
+        return dict(items)
     except (OSError, ValueError, KeyError, TypeError):
-        logger.warning("unreadable plan snapshot %s; treating as first run", path)
+        logger.warning("unusable plan snapshot %s; treating as first run", path)
         return None
 
 
