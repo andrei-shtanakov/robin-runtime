@@ -111,8 +111,20 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
         label = (
             f"open plan item ({item.heading}): " if item.heading else "open plan item: "
         )
+        # Fields are glossed, never passed through as tag syntax: the digest is read by
+        # a mixed team, and `@blocked_by:Maestro#R-03` is not a sentence (AUDIENCE RULE).
+        fields = [
+            f"{name}: {value}"
+            for name, value in (
+                ("owner", item.owner),
+                ("blocked by", item.blocked_by),
+                ("trigger", item.trigger),
+            )
+            if value
+        ]
+        suffix = f" — {'; '.join(fields)}" if fields else ""
         grouped.setdefault(item.path.split("/")[0], []).append(
-            Hit(item.path, item.line, (label + item.text)[:260])
+            Hit(item.path, item.line, (label + item.text)[:260] + suffix[:120])
         )
     per_repo = list(grouped.values())
     total = sum(len(items) for items in per_repo)

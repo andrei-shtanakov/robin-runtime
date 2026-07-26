@@ -42,9 +42,20 @@ _MAX_NAMED = 5  # named examples per counter; the counts carry the rest
 _STATE_VERSION = 1
 
 
+# Inline metadata on a checklist line: `@owner:andrei @blocked_by:Maestro#dogfood
+# @trigger:"p95 > 200ms"`. Values are bare tokens, or quoted when they contain spaces.
+# Only these three keys are metadata — everything else that looks like a tag is prose
+# the author wrote (an address, a decorator) and survives verbatim.
+TAG_KEYS = ("owner", "blocked_by", "trigger")
+_TAG = re.compile(rf"(?:(?<=\s)|^)@({'|'.join(TAG_KEYS)}):(?:\"([^\"]*)\"|(\S+))")
+
+
 @dataclass(frozen=True)
 class PlanItem:
-    """One open checklist item, identified independently of its line number."""
+    """One open checklist item, identified independently of its line number.
+
+    `text` is the prose with the tags removed and the fields lifted out: the tags are
+    metadata about the item, not part of what the item says."""
 
     key: str
     repo: str
@@ -52,9 +63,25 @@ class PlanItem:
     line: int
     heading: str
     text: str
+    owner: str | None = None
+    blocked_by: str | None = None
+    trigger: str | None = None
+
+
+def _parse_tags(line: str) -> tuple[str, dict[str, str]]:
+    """Split a checklist line into prose and fields. First occurrence of a key wins."""
+    fields: dict[str, str] = {}
+    for match in _TAG.finditer(line):
+        key = match.group(1)
+        value = match.group(2) if match.group(2) is not None else match.group(3)
+        fields.setdefault(key, value)
+    return " ".join(_TAG.sub("", line).split()), fields
 
 
 def _key(path: str, text: str) -> str:
+    """Identity of an item: its file and its prose, with tags already stripped by
+    _parse_tags(). Labelling an item, or changing who owns it, must not read as the
+    old item closing and a new one opening (handoff note 2026-07-26 §4)."""
     return f"{path}::{' '.join(text.lower().split())}"
 
 
@@ -92,7 +119,7 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                 if match := _UNCHECKED.match(line):
                     # Checkbox syntax is a marker, not content — it reads as noise
                     # once the item is quoted inside a sentence about movement.
-                    text = match.group(1).strip()
+                    text, fields = _parse_tags(match.group(1).strip())
                     items.append(
                         PlanItem(
                             key=_key(rel, text),
@@ -101,6 +128,9 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                             line=number,
                             heading=heading,
                             text=text,
+                            owner=fields.get("owner"),
+                            blocked_by=fields.get("blocked_by"),
+                            trigger=fields.get("trigger"),
                         )
                     )
     return items
