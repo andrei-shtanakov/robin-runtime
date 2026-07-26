@@ -48,6 +48,10 @@ class RobinConfig:
     allowed_dm_users: tuple[str, ...] = ()  # slot 7: chat identity registry
     tz: str = "UTC"  # duties.md <TZ>; drives "today" parsing and digest windows
     digest_grace_hours: int = 6  # §7 liveness: cadence + grace
+    # Open plan items carried into the weekly digest. Sized above the ecosystem's real
+    # open-item count (62 across 12 repos on 2026-07-26) so the "the plan picture is
+    # incomplete" disclaimer reflects a genuine overflow, not a too-tight budget.
+    plan_items_max: int = 80
 
     # slot 1: Telegram surface. Secrets env-only (slot 17); non-secrets kept here too so
     # every adapter reads one object.
@@ -105,6 +109,7 @@ def load_config() -> RobinConfig:
         allowed_dm_users=users,
         tz=os.environ.get("ROBIN_TZ", "UTC"),
         digest_grace_hours=int(os.environ.get("ROBIN_DIGEST_GRACE_HOURS", "6")),
+        plan_items_max=int(os.environ.get("ROBIN_PLAN_ITEMS_MAX", "80")),
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_channel=os.environ.get("ROBIN_TELEGRAM_CHANNEL") or None,
         maintainer_chat=os.environ.get("ROBIN_MAINTAINER_CHAT") or None,
