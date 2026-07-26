@@ -62,6 +62,16 @@ def test_coverage_is_silent_when_every_mirror_has_a_plan(tmp_path: Path) -> None
     assert coverage_hit(config) is None
 
 
+def test_a_directory_named_like_a_plan_file_is_not_coverage(tmp_path: Path) -> None:
+    # open_items() reads plan files and skips anything unreadable, so coverage must
+    # apply the same test or the two disagree about the same repo (Copilot, PR #22).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").mkdir()
+    hit = coverage_hit(config)
+    assert hit is not None and "vault" in hit.text
+
+
 def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
     # An all-checked plan file is a maintained plan that happens to be empty, not a
     # missing one — arbiter's April snapshot is the live example.
