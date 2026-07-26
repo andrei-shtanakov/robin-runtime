@@ -119,19 +119,26 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     is not a project with work), so they leave the denominator instead of being
     reported as a gap every run — but the exemption is stated, because shrinking the
     denominator in silence is the failure this marker exists to catch."""
-    expected = [
-        root
-        for root in [config.vault_path, *config.repo_paths]
-        if root.name not in config.plan_exempt
-    ]
+    mirrors = [config.vault_path, *config.repo_paths]
+    names = {root.name for root in mirrors}
+    # Only exemptions that actually matched may be claimed as applied: echoing a typo
+    # as "exempt, not counted" while the real repo stays in the gap list would make
+    # the honesty marker itself lie.
+    applied = [name for name in config.plan_exempt if name in names]
+    unknown = [name for name in config.plan_exempt if name not in names]
+    expected = [root for root in mirrors if root.name not in applied]
     missing = [root.name for root in expected if next(_plan_files(root), None) is None]
     if not missing:
         return None
     exempted = (
-        f" Exempt by configuration, not counted: {', '.join(config.plan_exempt)}."
-        if config.plan_exempt
+        f" Exempt by configuration, not counted: {', '.join(applied)}."
+        if applied
         else ""
     )
+    if unknown:
+        exempted += (
+            f" Configured exemptions matching no mirror, ignored: {', '.join(unknown)}."
+        )
     return Hit(
         "(plan-coverage)",
         1,

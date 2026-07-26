@@ -127,6 +127,20 @@ def test_exemptions_are_disclosed_not_silent(tmp_path: Path) -> None:
     assert "vault" in hit.text and "exempt" in hit.text.lower()
 
 
+def test_an_exemption_matching_no_mirror_is_reported_as_ignored(tmp_path: Path) -> None:
+    # A typo used to be echoed as "exempt, not counted" while the real repo stayed in
+    # the gap list — the honesty marker itself lying (Copilot, PR #24).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    config = replace(config, plan_exempt=("vualt",))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "vault" in hit.text  # the real mirror is still counted as a gap
+    assert "1 of 2" in hit.text  # ...and still in the denominator
+    assert "vualt" in hit.text and "ignored" in hit.text.lower()
+    assert "not counted: vualt" not in hit.text  # never claimed as applied
+
+
 def test_exemption_does_not_hide_items_a_repo_does_have(tmp_path: Path) -> None:
     # Exempt means "not expected to keep a plan", not "ignore its plan": if the repo
     # starts keeping one, its items must still reach the digest.
