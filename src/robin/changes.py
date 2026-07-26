@@ -286,7 +286,9 @@ def collect_changes(
             total_commits += len(items)
     hits = _interleave(per_repo, max_hits)
     dirty = uncommitted(config)
-    if not hits and not dirty:
+    # Keyed on what was found, not on what fit the budget: a window whose commits were
+    # all budgeted out is a truncated window, not an empty one.
+    if not total_commits and not dirty:
         # Negative evidence, spelled out for the answer layer: this is a statement
         # about what the mirrors show, not proof that nothing happened.
         hits.append(

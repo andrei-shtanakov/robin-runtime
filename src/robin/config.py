@@ -49,7 +49,7 @@ class RobinConfig:
     tz: str = "UTC"  # duties.md <TZ>; drives "today" parsing and digest windows
     digest_grace_hours: int = 6  # §7 liveness: cadence + grace
     # Open plan items carried into the weekly digest. Sized above the ecosystem's real
-    # open-item count (62 across 12 repos on 2026-07-26) so the "the plan picture is
+    # open-item count (62 across 12 repos on 2026-07-26) so the "plan picture is
     # incomplete" disclaimer reflects a genuine overflow, not a too-tight budget.
     plan_items_max: int = 80
 

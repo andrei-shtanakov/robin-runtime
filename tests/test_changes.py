@@ -178,6 +178,22 @@ def test_collect_changes_flags_per_repo_commit_cap(
     assert "vault" in marker.text  # the partial repo is named, not just counted
 
 
+def test_collect_changes_never_calls_a_budgeted_out_window_empty(
+    tmp_path: Path,
+) -> None:
+    # The negative-evidence marker must depend on what was FOUND, not on what fit the
+    # budget — otherwise a zero budget reports a busy window as "no changes" (Copilot
+    # review, PR #20).
+    vault = tmp_path / "vault"
+    _make_repo(vault, [("2026-07-08T10:00:00+00:00", "real work")])
+    config = RobinConfig(vault_path=vault, repo_paths=[], var_dir=tmp_path / "var")
+    period = Period(
+        since=datetime(2026, 7, 7, tzinfo=timezone.utc), until=None, label="test"
+    )
+    hits = collect_changes(config, period, max_hits=0)
+    assert "(no-changes-found)" not in [hit.path for hit in hits]
+
+
 def test_collect_changes_reports_empty_window_as_negative_evidence(
     tmp_path: Path,
 ) -> None:
