@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from robin.config import RobinConfig
-from robin.plan_state import delta_hit, open_items, record
+from robin.plan_state import coverage_hit, delta_hit, open_items, record
 
 NOW = datetime(2026, 7, 26, 9, 0, tzinfo=timezone.utc)
 
@@ -34,6 +34,41 @@ def test_open_items_survive_line_moves(tmp_path: Path) -> None:
     after = open_items(config)
     assert [item.key for item in before] == [item.key for item in after]
     assert after[0].line == 3  # the line did move
+
+
+def test_coverage_names_mirrors_without_a_plan_file(tmp_path: Path) -> None:
+    # A repo with no plan file contributes nothing and used to do so silently, so the
+    # "what remains" picture looked ecosystem-wide when it covered a fraction of it
+    # (5 of 12 mirrors on 2026-07-26, and 56 of 62 items came from two files).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    silent = tmp_path / "deployer"
+    silent.mkdir()
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[tmp_path / "maestro", silent],
+        var_dir=tmp_path / "var",
+    )
+    hit = coverage_hit(config)
+    assert hit is not None and hit.path == "(plan-coverage)"
+    assert "1 of 3" in hit.text
+    assert "deployer" in hit.text and "vault" in hit.text
+    assert "maestro" not in hit.text  # the covered repo is not in the gap list
+
+
+def test_coverage_is_silent_when_every_mirror_has_a_plan(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").write_text("- [ ] vault work\n")
+    assert coverage_hit(config) is None
+
+
+def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
+    # An all-checked plan file is a maintained plan that happens to be empty, not a
+    # missing one — arbiter's April snapshot is the live example.
+    config = _config(tmp_path, "- [x] everything shipped\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").write_text("- [ ] vault work\n")
+    assert coverage_hit(config) is None
 
 
 def test_item_text_drops_the_checkbox_marker(tmp_path: Path) -> None:

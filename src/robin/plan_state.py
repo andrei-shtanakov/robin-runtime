@@ -96,6 +96,32 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
     return items
 
 
+def coverage_hit(config: RobinConfig) -> Hit | None:
+    """Which mirrors have a plan file at all — None when every one of them does.
+
+    A repo without a plan file contributes nothing to the "what remains" section and
+    used to do so silently, which made a partial forward-look read as an ecosystem-wide
+    one: on 2026-07-26 only 5 of 12 mirrors carried a plan file, and 56 of the 62 open
+    items came from two of them. An all-checked plan file still counts as covered —
+    that is a maintained plan that happens to be empty, not a missing one."""
+    missing = [
+        root.name
+        for root in [config.vault_path, *config.repo_paths]
+        if not any(next(root.glob(pattern), None) for pattern in PLAN_GLOBS)
+    ]
+    if not missing:
+        return None
+    total = 1 + len(config.repo_paths)
+    return Hit(
+        "(plan-coverage)",
+        1,
+        f"plan files exist in {total - len(missing)} of {total} mirrors; no plan file "
+        f"in: {', '.join(missing)}. Remaining work in those repos is INVISIBLE to this "
+        "digest — their silence in the plan section is not evidence that they have "
+        "nothing left to do.",
+    )
+
+
 def _state_path(config: RobinConfig, kind: str) -> Path:
     return config.var_dir / f"plan-state-{kind}.json"
 

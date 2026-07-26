@@ -178,6 +178,19 @@ def test_daily_digest_carries_the_plan_delta(tmp_path: Path, monkeypatch) -> Non
     assert "3 open plan item" in movement[0].text
 
 
+@pytest.mark.parametrize("kind", ["daily", "weekly"])
+def test_both_digests_disclose_missing_plan_files(
+    tmp_path: Path, monkeypatch, kind: str
+) -> None:
+    # Both cadences make claims about remaining work — the daily through the delta
+    # counters, the weekly through the list — so both must say whose plans are absent.
+    _capture_sources(monkeypatch)
+    config = _repo_with_plan(tmp_path, items=2)  # vault has no plan file
+    _, sources, _ = compose(config, kind, now=NOW)
+    coverage = [hit for hit in sources if hit.path == "(plan-coverage)"]
+    assert len(coverage) == 1 and "vault" in coverage[0].text
+
+
 def _digest_env(tmp_path: Path, monkeypatch) -> Path:
     """A workspace load_config() discovers, plus a stubbed LLM call site."""
     _capture_sources(monkeypatch)
