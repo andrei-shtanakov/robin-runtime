@@ -24,7 +24,7 @@ from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
 from .kb import Hit
 from .log import setup_logging
-from .plan_state import delta_hit, open_items
+from .plan_state import coverage_hit, delta_hit, open_items
 from .plan_state import record as record_plan_state
 
 logger = logging.getLogger("robin.digest")
@@ -64,7 +64,9 @@ _DIGEST_RULES = (
     "SOURCES flag the plan list or the change list as partial, say so — and name the "
     "repos the marker names as only partially covered, rather than warning in general. "
     "If the plan-delta source says there is no previous snapshot, say the comparison "
-    "baseline is missing — never report that as 'nothing moved'. "
+    "baseline is missing — never report that as 'nothing moved'. If the plan-coverage "
+    "source names repos without a plan file, say which repos the remaining-work "
+    "picture does NOT cover, once, in plain language. "
     "AUDIENCE RULE: the digest is read by a mixed team including non-engineers. "
     "Summarize remaining plan work thematically, in plain language grounded in the "
     "SOURCES — a few sentences per repo, not an item-by-item list. Internal shorthand "
@@ -199,6 +201,8 @@ def compose(
     ]
     if movement := delta_hit(config, kind, now=now):
         sources.append(movement)
+    if gap := coverage_hit(config):
+        sources.append(gap)
     if kind in PLAN_SECTION_KINDS:
         sources += plan_hits(config, max_hits=config.plan_items_max)
     question = _DIGEST_QUESTION.format(kind=kind, period=period.label)
