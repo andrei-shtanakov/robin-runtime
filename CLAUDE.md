@@ -1,5 +1,12 @@
 # CLAUDE.md
 
+## Active work
+
+- **Task list:** `./TODO.md` — read at the start of every session. Team-level items
+  only; implementation micro-steps belong in PR descriptions, and the digest's plan
+  scanner deliberately ignores `docs/plans/*.md`.
+- **Spec / duties:** `../prograph-vault/ROBIN-SPEC.local.md`, `../prograph-vault/robin/duties.md`.
+
 ## Repo scope & boundaries
 
 - **Этот репо:** `robin-runtime` — git-корень `all_ai_orchestrators/robin-runtime/`, remote `git@github.com:andrei-shtanakov/robin-runtime.git`.
