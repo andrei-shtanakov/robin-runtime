@@ -180,6 +180,39 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     )
 
 
+def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
+    """How much of the plan is labelled — currently: how many items nobody owns.
+
+    An absent `@owner:` is the honest way to record "nobody decided yet", and that is
+    only useful if it is counted: an unowned item has no one to take its next decision.
+    Silent when every open item has an owner — a standing "0 unowned" line every run is
+    the noise that teaches readers to skip the markers that matter.
+
+    Movement ("was N") needs the previous snapshot to have tracked owners at all;
+    entries written before it did are silent rather than counted as unowned, which
+    would invent a regression that never happened."""
+    items = open_items(config)
+    unowned = [item for item in items if not item.owner]
+    if not unowned:
+        return None
+    previous = load_state(config, kind)
+    was = ""
+    # `is not None`, not truthiness: a snapshot with no items is a baseline of zero,
+    # not a missing baseline, and treating it as missing hides the regression from an
+    # empty plan to an unowned one. (An empty snapshot tracked owners vacuously.)
+    if previous is not None and all("owner" in entry for entry in previous.values()):
+        before = sum(1 for entry in previous.values() if not entry.get("owner"))
+        was = f" (was {before} at the previous {kind} digest)"
+    labelled = sum(1 for item in items if item.blocked_by or item.trigger)
+    return Hit(
+        "(plan-fields)",
+        1,
+        f"{len(unowned)} of {len(items)} open plan items name no owner{was} — nobody "
+        "is on the hook for their next decision. "
+        f"{labelled} item(s) state a blocker or a trigger.",
+    )
+
+
 def _state_path(config: RobinConfig, kind: str) -> Path:
     return config.var_dir / f"plan-state-{kind}.json"
 
@@ -223,6 +256,9 @@ def record(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pa
             "repo": item.repo,
             "path": item.path,
             "text": item.text,
+            # Always written, None included: the presence of the key is how a later
+            # run knows this snapshot tracked owners and can be compared against.
+            "owner": item.owner,
             "first_seen": previous.get(item.key, {}).get("first_seen", stamp),
             "last_seen": stamp,
         }

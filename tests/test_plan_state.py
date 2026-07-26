@@ -11,7 +11,13 @@ import pytest
 
 from robin.config import RobinConfig
 from robin.digest import plan_hits
-from robin.plan_state import coverage_hit, delta_hit, open_items, record
+from robin.plan_state import (
+    coverage_hit,
+    delta_hit,
+    fields_hit,
+    open_items,
+    record,
+)
 
 NOW = datetime(2026, 7, 26, 9, 0, tzinfo=timezone.utc)
 
@@ -247,6 +253,67 @@ def test_hits_surface_the_fields_in_plain_language(tmp_path: Path) -> None:
     text = plan_hits(config)[0].text
     assert "SDK integration" in text and "@owner" not in text
     assert "owner: atp" in text and "blocked by: Maestro#R-03" in text
+
+
+def test_unowned_items_are_counted_against_the_total(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path, "- [ ] mine @owner:andrei\n- [ ] nobody's\n- [ ] also nobody's\n"
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None and hit.path == "(plan-fields)"
+    assert "2 of 3" in hit.text
+
+
+def test_a_fully_owned_plan_says_nothing(tmp_path: Path) -> None:
+    # Nothing to report is reported as nothing: a standing "0 unowned" line every run
+    # is the noise that makes real markers get skipped.
+    config = _config(tmp_path, "- [ ] mine @owner:andrei\n")
+    assert fields_hit(config, "daily") is None
+    assert fields_hit(_config(tmp_path, "- [x] done\n"), "daily") is None
+
+
+def test_unowned_count_carries_its_previous_value(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] alpha\n- [ ] beta\n")
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [ ] alpha @owner:andrei\n- [ ] beta\n"
+    )
+    hit = fields_hit(config, "daily")
+    assert "1 of 2" in hit.text and "was 2" in hit.text  # labelling progress is visible
+
+
+def test_an_empty_snapshot_is_a_baseline_of_zero(tmp_path: Path) -> None:
+    # A snapshot with no items is not a missing snapshot: the previous unowned count
+    # was definitively 0, and hiding that hides the regression (Copilot, PR #28).
+    config = _config(tmp_path, "- [x] all done\n")
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text("- [ ] new unowned work\n")
+    hit = fields_hit(config, "daily")
+    assert "1 of 1" in hit.text and "was 0" in hit.text
+
+
+def test_a_snapshot_from_before_owner_tracking_claims_no_movement(
+    tmp_path: Path,
+) -> None:
+    # Entries written before owners were recorded cannot say how many were unowned;
+    # reading their silence as "all of them" would invent a regression that never happened.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    config.var_dir.mkdir(parents=True, exist_ok=True)
+    (config.var_dir / "plan-state-daily.json").write_text(
+        '{"version": 1, "updated": 1, "items": {"maestro/TODO.md::alpha": '
+        '{"text": "alpha", "first_seen": 1, "last_seen": 1}}}'
+    )
+    hit = fields_hit(config, "daily")
+    assert "1 of 1" in hit.text
+    assert "was" not in hit.text
+
+
+def test_record_persists_the_owner_field(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] alpha @owner:andrei\n- [ ] beta\n")
+    record(config, "daily", now=NOW)
+    items = json.loads((config.var_dir / "plan-state-daily.json").read_text())["items"]
+    owners = {entry["text"]: entry["owner"] for entry in items.values()}
+    assert owners == {"alpha": "andrei", "beta": None}  # key present even when unset
 
 
 def test_first_run_reports_no_baseline_rather_than_no_movement(tmp_path: Path) -> None:
