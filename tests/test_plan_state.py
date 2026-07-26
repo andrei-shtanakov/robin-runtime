@@ -217,6 +217,27 @@ def test_tags_are_recognised_mid_line_and_unknown_ones_are_left_alone(
     assert item.text == "see about @foo:bar and me@host"
 
 
+def test_first_occurrence_of_a_repeated_key_wins(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] shared item @owner:andrei @owner:someone-else\n")
+    item = open_items(config)[0]
+    assert item.owner == "andrei"
+    assert item.text == "shared item"  # both occurrences leave the prose
+
+
+def test_a_hit_stays_within_its_length_cap_with_fields(tmp_path: Path) -> None:
+    # The fields must not smuggle the hit past the 260-char budget — every hit that
+    # grows costs the prompt sources it could have carried (Copilot, PR #27).
+    long_item = "x" * 400
+    config = _config(
+        tmp_path, f"- [ ] {long_item} @owner:andrei @blocked_by:Maestro#R-03\n"
+    )
+    hit = plan_hits(config)[0]
+    assert len(hit.text) <= 260
+    # prose is the compressible part; the fields survive whole, like the truncation
+    # flag in uncommitted() that is placed before the list the cap can eat
+    assert "owner: andrei" in hit.text and "blocked by: Maestro#R-03" in hit.text
+
+
 def test_hits_surface_the_fields_in_plain_language(tmp_path: Path) -> None:
     # Parsed and then hidden would be pointless: the digest reads hit text, so the
     # fields have to reach it — glossed, not as raw tag syntax (AUDIENCE RULE).
