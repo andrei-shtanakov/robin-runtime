@@ -197,7 +197,10 @@ def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
         return None
     previous = load_state(config, kind)
     was = ""
-    if previous and all("owner" in entry for entry in previous.values()):
+    # `is not None`, not truthiness: a snapshot with no items is a baseline of zero,
+    # not a missing baseline, and treating it as missing hides the regression from an
+    # empty plan to an unowned one. (An empty snapshot tracked owners vacuously.)
+    if previous is not None and all("owner" in entry for entry in previous.values()):
         before = sum(1 for entry in previous.values() if not entry.get("owner"))
         was = f" (was {before} at the previous {kind} digest)"
     labelled = sum(1 for item in items if item.blocked_by or item.trigger)

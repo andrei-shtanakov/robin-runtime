@@ -282,6 +282,16 @@ def test_unowned_count_carries_its_previous_value(tmp_path: Path) -> None:
     assert "1 of 2" in hit.text and "was 2" in hit.text  # labelling progress is visible
 
 
+def test_an_empty_snapshot_is_a_baseline_of_zero(tmp_path: Path) -> None:
+    # A snapshot with no items is not a missing snapshot: the previous unowned count
+    # was definitively 0, and hiding that hides the regression (Copilot, PR #28).
+    config = _config(tmp_path, "- [x] all done\n")
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text("- [ ] new unowned work\n")
+    hit = fields_hit(config, "daily")
+    assert "1 of 1" in hit.text and "was 0" in hit.text
+
+
 def test_a_snapshot_from_before_owner_tracking_claims_no_movement(
     tmp_path: Path,
 ) -> None:
