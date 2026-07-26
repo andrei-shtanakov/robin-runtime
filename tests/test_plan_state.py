@@ -72,6 +72,28 @@ def test_a_directory_named_like_a_plan_file_is_not_coverage(tmp_path: Path) -> N
     assert hit is not None and "vault" in hit.text
 
 
+def test_an_unreadable_plan_file_is_not_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A file that exists but cannot be read yields no items either, so counting it as
+    # coverage reopens the exact hole this marker closes (Copilot, PR #23).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    unreadable = tmp_path / "vault" / "TODO.md"
+    unreadable.write_text("- [ ] vault work\n")
+    original = Path.read_text
+
+    def deny(self, *args, **kwargs):
+        if self == unreadable:
+            raise PermissionError(f"denied: {self}")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny)
+    assert open_items(config) and all(i.repo != "vault" for i in open_items(config))
+    hit = coverage_hit(config)
+    assert hit is not None and "vault" in hit.text
+
+
 def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
     # An all-checked plan file is a maintained plan that happens to be empty, not a
     # missing one — arbiter's April snapshot is the live example.

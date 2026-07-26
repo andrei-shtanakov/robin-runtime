@@ -21,6 +21,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,22 @@ def _key(path: str, text: str) -> str:
     return f"{path}::{' '.join(text.lower().split())}"
 
 
+def _plan_files(root: Path) -> Iterator[tuple[Path, list[str]]]:
+    """Readable plan files in one mirror, with their lines.
+
+    The single definition of "this repo has a plan": unreadable is treated as absent,
+    for the scanner and the coverage check alike. Anything less — an existence test in
+    one and a read in the other — lets them disagree about the same repo, which is the
+    silent hole coverage_hit() exists to close."""
+    for pattern in PLAN_GLOBS:
+        for path in sorted(root.glob(pattern)):
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            yield path, text.splitlines()
+
+
 def open_items(config: RobinConfig) -> list[PlanItem]:
     """Every open plan item across the mirrors, unbudgeted, in repo-major order.
 
@@ -65,34 +82,27 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
     as movement."""
     items: list[PlanItem] = []
     for root in [config.vault_path, *config.repo_paths]:
-        for pattern in PLAN_GLOBS:
-            for path in sorted(root.glob(pattern)):
-                try:
-                    lines = path.read_text(
-                        encoding="utf-8", errors="ignore"
-                    ).splitlines()
-                except OSError:
+        for path, lines in _plan_files(root):
+            rel = f"{root.name}/{path.relative_to(root)}"
+            heading = ""
+            for number, line in enumerate(lines, 1):
+                if match := _HEADING.match(line):
+                    heading = match.group(1).strip().strip("*").strip()[:60]
                     continue
-                rel = f"{root.name}/{path.relative_to(root)}"
-                heading = ""
-                for number, line in enumerate(lines, 1):
-                    if match := _HEADING.match(line):
-                        heading = match.group(1).strip().strip("*").strip()[:60]
-                        continue
-                    if match := _UNCHECKED.match(line):
-                        # Checkbox syntax is a marker, not content — it reads as noise
-                        # once the item is quoted inside a sentence about movement.
-                        text = match.group(1).strip()
-                        items.append(
-                            PlanItem(
-                                key=_key(rel, text),
-                                repo=root.name,
-                                path=rel,
-                                line=number,
-                                heading=heading,
-                                text=text,
-                            )
+                if match := _UNCHECKED.match(line):
+                    # Checkbox syntax is a marker, not content — it reads as noise
+                    # once the item is quoted inside a sentence about movement.
+                    text = match.group(1).strip()
+                    items.append(
+                        PlanItem(
+                            key=_key(rel, text),
+                            repo=root.name,
+                            path=rel,
+                            line=number,
+                            heading=heading,
+                            text=text,
                         )
+                    )
     return items
 
 
@@ -101,17 +111,14 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
 
     A repo without a plan file contributes nothing to the "what remains" section and
     used to do so silently, which made a partial forward-look read as an ecosystem-wide
-    one: on 2026-07-26 only 5 of 12 mirrors carried a plan file, and 56 of the 62 open
-    items came from two of them. An all-checked plan file still counts as covered —
+    one: on 2026-07-26 only 6 of 12 mirrors carried a plan file, 5 of them had anything
+    open, and 56 of the 62 items came from two. An all-checked plan file counts as
+    covered —
     that is a maintained plan that happens to be empty, not a missing one."""
-    # is_file(), matching what open_items() can actually read: a directory named
-    # TODO.md would otherwise count as coverage here and yield nothing there.
     missing = [
         root.name
         for root in [config.vault_path, *config.repo_paths]
-        if not any(
-            path.is_file() for pattern in PLAN_GLOBS for path in root.glob(pattern)
-        )
+        if next(_plan_files(root), None) is None
     ]
     if not missing:
         return None
