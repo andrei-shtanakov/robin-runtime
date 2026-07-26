@@ -210,7 +210,10 @@ def _digest_env(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
     monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
     (tmp_path / "vault").mkdir(exist_ok=True)
-    maestro = tmp_path / "Maestro"  # a name load_config() discovers as a mirror
+    # A canonical mirror name, i.e. one load_config() discovers. Spelling it `Maestro`
+    # here passed on a case-insensitive filesystem and failed only on Linux CI — the
+    # same trap the list itself fell into.
+    maestro = tmp_path / "maestro"
     maestro.mkdir(exist_ok=True)
     (maestro / "TODO.md").write_text("- [ ] first item\n")
     return tmp_path / "var" / "plan-state-daily.json"
