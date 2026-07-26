@@ -11,7 +11,12 @@ UNIT_DIR=/etc/systemd/system
 # Mirror remotes: read-only view of the ecosystem (slot 6). Adjust to your remotes —
 # see projects.md in the workspace root for the canonical list.
 GIT_BASE="${GIT_BASE:?set GIT_BASE, e.g. git@github.com:your-org}"
-REPOS=(prograph-vault atp-platform Maestro arbiter spec-runner deployer dispatcher steward proctor prograph discovery open-prose robin-runtime)
+# Canonical names only: $repo is both the clone URL and the mirror directory, and
+# config.py resolves mirrors by that directory name. Cloning a renamed repo by its old
+# name works (GitHub redirects) but recreates the dead directory name, which is how
+# mirrors/open-prose came back on 2026-07-16 — after the rename. Keep in sync with
+# _ECOSYSTEM_REPOS in src/robin/config.py; tests/test_config.py asserts the two match.
+REPOS=(prograph-vault atp-platform maestro arbiter spec-runner spec-runner-vscode deployer dispatcher steward proctor prograph discovery libretto research-bench github-checker robin-runtime)
 
 echo "== packages =="
 apt-get update -q
