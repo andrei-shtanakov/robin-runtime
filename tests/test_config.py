@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -37,8 +38,12 @@ def test_mirror_list_matches_the_deploy_script() -> None:
     setup = (Path(__file__).resolve().parents[1] / "deploy" / "setup.sh").read_text(
         encoding="utf-8"
     )
-    line = next(ln for ln in setup.splitlines() if ln.startswith("REPOS=("))
-    cloned = set(line[len("REPOS=(") : line.rindex(")")].split())
+    # Tolerant of shell cosmetics (indentation, spacing): this test exists to catch a
+    # drifting repo set, and failing on a reformatted line would only teach the reader
+    # to distrust it. A missing declaration is reported as such, not as StopIteration.
+    match = re.search(r"^\s*REPOS=\(([^)]*)\)", setup, re.MULTILINE)
+    assert match, "deploy/setup.sh no longer declares REPOS=(...)"
+    cloned = set(match.group(1).split())
     # setup.sh also clones the knowledge repo, which is the vault rather than a mirror
     # of an ecosystem repo, and is therefore absent from _ECOSYSTEM_REPOS by design.
     assert cloned == set(_ECOSYSTEM_REPOS) | {"prograph-vault"}
