@@ -191,6 +191,19 @@ def test_both_digests_disclose_missing_plan_files(
     assert len(coverage) == 1 and "vault" in coverage[0].text
 
 
+@pytest.mark.parametrize("kind", ["daily", "weekly"])
+def test_both_digests_carry_the_labelling_gap(
+    tmp_path: Path, monkeypatch, kind: str
+) -> None:
+    # Both cadences claim things about remaining work, so both should say how much of
+    # it has nobody attached to it.
+    _capture_sources(monkeypatch)
+    config = _repo_with_plan(tmp_path, items=4)
+    _, sources, _ = compose(config, kind, now=NOW)
+    fields = [hit for hit in sources if hit.path == "(plan-fields)"]
+    assert len(fields) == 1 and "4 of 4" in fields[0].text
+
+
 def _digest_env(tmp_path: Path, monkeypatch) -> Path:
     """A workspace load_config() discovers, plus a stubbed LLM call site."""
     _capture_sources(monkeypatch)
