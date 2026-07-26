@@ -75,4 +75,19 @@ server {
 - Logs: `journalctl -u robin-telegram -u robin-web -u robin-digest-* --since today`.
 - `var/` grows without bound (append-only by design). Archive `interactions.jsonl`
   yearly; never edit it in place. SQLite migration is the planned M3 upgrade.
-- Updating code: `cd /srv/robin/robin-runtime && git pull && uv sync && systemctl restart robin-telegram robin-web`.
+- Updating code — **as `robin`, never as root**. The checkout, the `.venv` and `var/`
+  are owned by the service user (`setup.sh` clones with `sudo -u robin`, the units run
+  `User=robin`); a `sudo git pull` leaves root-owned objects in `.git` and a root-owned
+  `.venv`, which the services then fail to write. `-H` matters: without it `HOME` stays
+  the caller's and both uv's cache and robin's deploy key go missing.
+
+  ```bash
+  sudo -H -u robin git -C /srv/robin/robin-runtime pull --ff-only
+  cd /srv/robin/robin-runtime && sudo -H -u robin uv sync
+  sudo systemctl restart robin-telegram robin-web
+  ```
+
+  Only the long-running units need the restart; the digest and liveness timers are
+  oneshot and pick up new code and a changed `robin.env` on their next fire.
+- Changing settings: edit `/srv/robin/robin.env` (the `EnvironmentFile` of every unit),
+  not anything inside the checkout. `deploy/env.example` only documents the knobs.
