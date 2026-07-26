@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from robin.config import RobinConfig
+from robin.digest import plan_hits
 from robin.plan_state import coverage_hit, delta_hit, open_items, record
 
 NOW = datetime(2026, 7, 26, 9, 0, tzinfo=timezone.utc)
@@ -163,6 +164,89 @@ def test_item_text_drops_the_checkbox_marker(tmp_path: Path) -> None:
     # inside a sentence about movement.
     config = _config(tmp_path, "* [ ]   ship the gate\n")
     assert open_items(config)[0].text == "ship the gate"
+
+
+def test_tags_are_parsed_off_the_item_text(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "- [ ] Package the arbiter client @owner:andrei @blocked_by:Maestro#dogfood "
+        '@trigger:"p95 > 200ms or 1M rows"\n',
+    )
+    item = open_items(config)[0]
+    assert item.owner == "andrei"
+    assert item.blocked_by == "Maestro#dogfood"
+    assert item.trigger == "p95 > 200ms or 1M rows"  # quoted value keeps its spaces
+    assert item.text == "Package the arbiter client"  # metadata leaves the prose
+
+
+def test_untagged_items_carry_no_fields(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] plain item\n")
+    item = open_items(config)[0]
+    assert (item.owner, item.blocked_by, item.trigger) == (None, None, None)
+
+
+def test_labelling_an_item_does_not_change_its_identity(tmp_path: Path) -> None:
+    # THE point of the parser: keys are normalized text, so labelling 56 items in one
+    # pass would otherwise report 56 closed and 56 opened (handoff note 2026-07-26 §4).
+    config = _config(tmp_path, "- [ ] ship the gate\n")
+    before = open_items(config)[0].key
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        '- [ ] ship the gate @owner:andrei @trigger:"a week of clean runs"\n'
+    )
+    assert open_items(config)[0].key == before
+
+
+def test_editing_a_tag_is_not_a_close_and_reopen(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] ship the gate @owner:andrei\n")
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [ ] ship the gate @owner:someone-else @blocked_by:Maestro#x\n"
+    )
+    hit = delta_hit(config, "daily", now=NOW + timedelta(days=1))
+    assert "no plan items opened or closed" in hit.text
+
+
+def test_tags_are_recognised_mid_line_and_unknown_ones_are_left_alone(
+    tmp_path: Path,
+) -> None:
+    # Only the three agreed keys are metadata; anything else is prose the author wrote
+    # and must survive verbatim (an email or a decorator is not a field).
+    config = _config(tmp_path, "- [ ] see @owner:andrei about @foo:bar and me@host\n")
+    item = open_items(config)[0]
+    assert item.owner == "andrei"
+    assert item.text == "see about @foo:bar and me@host"
+
+
+def test_first_occurrence_of_a_repeated_key_wins(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] shared item @owner:andrei @owner:someone-else\n")
+    item = open_items(config)[0]
+    assert item.owner == "andrei"
+    assert item.text == "shared item"  # both occurrences leave the prose
+
+
+def test_a_hit_stays_within_its_length_cap_with_fields(tmp_path: Path) -> None:
+    # The fields must not smuggle the hit past the 260-char budget — every hit that
+    # grows costs the prompt sources it could have carried (Copilot, PR #27).
+    long_item = "x" * 400
+    config = _config(
+        tmp_path, f"- [ ] {long_item} @owner:andrei @blocked_by:Maestro#R-03\n"
+    )
+    hit = plan_hits(config)[0]
+    assert len(hit.text) <= 260
+    # prose is the compressible part; the fields survive whole, like the truncation
+    # flag in uncommitted() that is placed before the list the cap can eat
+    assert "owner: andrei" in hit.text and "blocked by: Maestro#R-03" in hit.text
+
+
+def test_hits_surface_the_fields_in_plain_language(tmp_path: Path) -> None:
+    # Parsed and then hidden would be pointless: the digest reads hit text, so the
+    # fields have to reach it — glossed, not as raw tag syntax (AUDIENCE RULE).
+    config = _config(
+        tmp_path, "- [ ] SDK integration @owner:atp @blocked_by:Maestro#R-03\n"
+    )
+    text = plan_hits(config)[0].text
+    assert "SDK integration" in text and "@owner" not in text
+    assert "owner: atp" in text and "blocked by: Maestro#R-03" in text
 
 
 def test_first_run_reports_no_baseline_rather_than_no_movement(tmp_path: Path) -> None:

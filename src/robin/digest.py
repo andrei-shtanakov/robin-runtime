@@ -90,6 +90,8 @@ _DIGEST_RULES = (
 # the full list to the weekly digest makes the daily one a pure "what moved" delta —
 # the daily still carries the movement counters (plan_state.delta_hit).
 PLAN_SECTION_KINDS = ("weekly",)
+_HIT_CHARS = 260  # per plan hit, fields included — not text plus fields
+_FIELDS_CHARS = 120  # of that budget, the most the glossed fields may take
 
 
 def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
@@ -111,8 +113,25 @@ def plan_hits(config: RobinConfig, *, max_hits: int = 80) -> list[Hit]:
         label = (
             f"open plan item ({item.heading}): " if item.heading else "open plan item: "
         )
+        # Fields are glossed, never passed through as tag syntax: the digest is read by
+        # a mixed team, and `@blocked_by:Maestro#R-03` is not a sentence (AUDIENCE RULE).
+        fields = [
+            f"{name}: {value}"
+            for name, value in (
+                ("owner", item.owner),
+                ("blocked by", item.blocked_by),
+                ("trigger", item.trigger),
+            )
+            if value
+        ]
+        # The fields come out of the item's own budget, not on top of it: every hit
+        # that grows costs the prompt a source it could have carried. Prose is the
+        # compressible part — the fields are short, structured, and what the blocking
+        # graph is made of, so they survive whole and the text yields.
+        suffix = f" — {'; '.join(fields)}"[:_FIELDS_CHARS] if fields else ""
+        body = (label + item.text)[: _HIT_CHARS - len(suffix)]
         grouped.setdefault(item.path.split("/")[0], []).append(
-            Hit(item.path, item.line, (label + item.text)[:260])
+            Hit(item.path, item.line, body + suffix)
         )
     per_repo = list(grouped.values())
     total = sum(len(items) for items in per_repo)
