@@ -10,7 +10,15 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
     "openai>=1.30",  # slot 21 default STT/TTS provider (pluggable via voice.py)
+    "plan-fields",  # ADR-ECO-005 PF-7: the ONE plan-fields parser (pinned, below)
 ]
+
+# plan-fields is consumed as a PINNED git dependency, not copied inward — the
+# package owns "what is a checkbox item", robin owns its snapshot identity
+# (ADR-ECO-005 PF-7; see the package's CONSUMING.md). Bumping the pin is a
+# deliberate PR; contract drift is caught upstream by PF-6.
+[tool.uv.sources]
+plan-fields = { git = "https://github.com/andrei-shtanakov/dispatcher", rev = "145b01285b11ad4f0c1bcd74b717fbb4a6c25ecf", subdirectory = "packages/plan-fields" }
 
 [build-system]
 requires = ["hatchling"]

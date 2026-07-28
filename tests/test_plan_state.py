@@ -212,21 +212,28 @@ def test_editing_a_tag_is_not_a_close_and_reopen(tmp_path: Path) -> None:
     assert "no plan items opened or closed" in hit.text
 
 
-def test_tags_are_recognised_mid_line_and_unknown_ones_are_left_alone(
+def test_every_at_key_value_is_a_tag_and_stripped_from_movement_text(
     tmp_path: Path,
 ) -> None:
-    # Only the three agreed keys are metadata; anything else is prose the author wrote
-    # and must survive verbatim (an email or a decorator is not a field).
+    # The shared plan-fields tokenizer treats every `@key:value` as a tag (not
+    # just Robin's three keys), so they are all stripped from the movement text —
+    # including an unknown key like `@foo:bar`. This is deliberate: it also strips
+    # `@id`, so the PF-2B backfill will not churn text-based keys. A non-tag like
+    # `me@host` (no colon) survives verbatim; Robin still surfaces only
+    # owner/blocked_by/trigger as fields.
     config = _config(tmp_path, "- [ ] see @owner:andrei about @foo:bar and me@host\n")
     item = open_items(config)[0]
     assert item.owner == "andrei"
-    assert item.text == "see about @foo:bar and me@host"
+    assert item.text == "see about and me@host"
 
 
-def test_first_occurrence_of_a_repeated_key_wins(tmp_path: Path) -> None:
+def test_last_occurrence_of_a_repeated_key_wins(tmp_path: Path) -> None:
+    # The shared tokenizer is last-wins (Robin's own parser was first-wins); a
+    # duplicate @owner on one line is malformed either way and no real plan item
+    # carries one, so this only pins the shared behavior.
     config = _config(tmp_path, "- [ ] shared item @owner:andrei @owner:someone-else\n")
     item = open_items(config)[0]
-    assert item.owner == "andrei"
+    assert item.owner == "someone-else"
     assert item.text == "shared item"  # both occurrences leave the prose
 
 
