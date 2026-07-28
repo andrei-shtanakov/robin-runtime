@@ -43,8 +43,7 @@ _STATE_VERSION = 1
 # The syntactic scan — "what is a checkbox item", including the inline tags
 # `@owner` / `@blocked_by` / `@trigger` — is the shared plan-fields package
 # (ADR-ECO-005 PF-7). Robin keeps only its own snapshot identity (`_key` below)
-# and reads the operational fields it cares about off the scraped item's tags.
-_TAG_KEYS = ("owner", "blocked_by", "trigger")
+# and reads the three operational fields it cares about off the scraped tags.
 
 
 @dataclass(frozen=True)
@@ -72,9 +71,10 @@ def _section(section: str | None) -> str:
 
 
 def _key(path: str, text: str) -> str:
-    """Identity of an item: its file and its prose, with tags already stripped by
-    _parse_tags(). Labelling an item, or changing who owns it, must not read as the
-    old item closing and a new one opening (handoff note 2026-07-26 §4)."""
+    """Identity of an item: its file and its prose, with tags already stripped
+    (by plan-fields `scrape_items` -> `display_text`). Labelling an item, or
+    changing who owns it, must not read as the old item closing and a new one
+    opening (handoff note 2026-07-26 §4)."""
     return f"{path}::{' '.join(text.lower().split())}"
 
 
@@ -120,9 +120,9 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                         line=item.line,
                         heading=_section(item.section),
                         text=plan_text,
-                        owner=item.tags.get(_TAG_KEYS[0]),
-                        blocked_by=item.tags.get(_TAG_KEYS[1]),
-                        trigger=item.tags.get(_TAG_KEYS[2]),
+                        owner=item.tags.get("owner"),
+                        blocked_by=item.tags.get("blocked_by"),
+                        trigger=item.tags.get("trigger"),
                     )
                 )
     return items
