@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from plan_fields import scrape_items
 
 from .config import RobinConfig
 from .kb import Hit
@@ -34,20 +35,15 @@ logger = logging.getLogger("robin.plan_state")
 # Same sources as the digest's plan section: team-level plan files only, never
 # docs/plans/*.md implementation micro-steps.
 PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
-_UNCHECKED = re.compile(r"^\s*[-*]\s*\[ \]\s+(\S.*)$")
-_HEADING = re.compile(r"^#{1,6}\s+(.+)")
 
 STALE_AFTER_DAYS = 30  # an item open this long is a decision, not a task
 _MAX_NAMED = 5  # named examples per counter; the counts carry the rest
 _STATE_VERSION = 1
 
-
-# Inline metadata on a checklist line: `@owner:andrei @blocked_by:Maestro#dogfood
-# @trigger:"p95 > 200ms"`. Values are bare tokens, or quoted when they contain spaces.
-# Only these three keys are metadata — everything else that looks like a tag is prose
-# the author wrote (an address, a decorator) and survives verbatim.
-TAG_KEYS = ("owner", "blocked_by", "trigger")
-_TAG = re.compile(rf"(?:(?<=\s)|^)@({'|'.join(TAG_KEYS)}):(?:\"([^\"]*)\"|(\S+))")
+# The syntactic scan — "what is a checkbox item", including the inline tags
+# `@owner` / `@blocked_by` / `@trigger` — is the shared plan-fields package
+# (ADR-ECO-005 PF-7). Robin keeps only its own snapshot identity (`_key` below)
+# and reads the three operational fields it cares about off the scraped tags.
 
 
 @dataclass(frozen=True)
@@ -68,25 +64,22 @@ class PlanItem:
     trigger: str | None = None
 
 
-def _parse_tags(line: str) -> tuple[str, dict[str, str]]:
-    """Split a checklist line into prose and fields. First occurrence of a key wins."""
-    fields: dict[str, str] = {}
-    for match in _TAG.finditer(line):
-        key = match.group(1)
-        value = match.group(2) if match.group(2) is not None else match.group(3)
-        fields.setdefault(key, value)
-    return " ".join(_TAG.sub("", line).split()), fields
+def _section(section: str | None) -> str:
+    """Robin's heading budget on the shared scraper's section (a `*`-bold heading
+    reads as its text; long headings are trimmed to keep the delta line short)."""
+    return (section or "").strip("*").strip()[:60]
 
 
 def _key(path: str, text: str) -> str:
-    """Identity of an item: its file and its prose, with tags already stripped by
-    _parse_tags(). Labelling an item, or changing who owns it, must not read as the
-    old item closing and a new one opening (handoff note 2026-07-26 §4)."""
+    """Identity of an item: its file and its prose, with tags already stripped
+    (by plan-fields `scrape_items` -> `display_text`). Labelling an item, or
+    changing who owns it, must not read as the old item closing and a new one
+    opening (handoff note 2026-07-26 §4)."""
     return f"{path}::{' '.join(text.lower().split())}"
 
 
-def _plan_files(root: Path) -> Iterator[tuple[Path, list[str]]]:
-    """Readable plan files in one mirror, with their lines.
+def _plan_files(root: Path) -> Iterator[tuple[Path, str]]:
+    """Readable plan files in one mirror, with their text.
 
     The single definition of "this repo has a plan": unreadable is treated as absent,
     for the scanner and the coverage check alike. Anything less — an existence test in
@@ -98,7 +91,7 @@ def _plan_files(root: Path) -> Iterator[tuple[Path, list[str]]]:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            yield path, text.splitlines()
+            yield path, text
 
 
 def open_items(config: RobinConfig) -> list[PlanItem]:
@@ -109,30 +102,29 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
     as movement."""
     items: list[PlanItem] = []
     for root in [config.vault_path, *config.repo_paths]:
-        for path, lines in _plan_files(root):
+        for path, text in _plan_files(root):
             rel = f"{root.name}/{path.relative_to(root)}"
-            heading = ""
-            for number, line in enumerate(lines, 1):
-                if match := _HEADING.match(line):
-                    heading = match.group(1).strip().strip("*").strip()[:60]
-                    continue
-                if match := _UNCHECKED.match(line):
-                    # Checkbox syntax is a marker, not content — it reads as noise
-                    # once the item is quoted inside a sentence about movement.
-                    text, fields = _parse_tags(match.group(1).strip())
-                    items.append(
-                        PlanItem(
-                            key=_key(rel, text),
-                            repo=root.name,
-                            path=rel,
-                            line=number,
-                            heading=heading,
-                            text=text,
-                            owner=fields.get("owner"),
-                            blocked_by=fields.get("blocked_by"),
-                            trigger=fields.get("trigger"),
-                        )
+            for item in scrape_items(text):
+                if item.checked:
+                    continue  # the digest's plan section is open work only
+                # `display_text` is the item with every tag stripped: the checkbox
+                # marker and the metadata read as noise once the item is quoted in
+                # a sentence about movement. Identity is Robin's own (`_key`), not
+                # the package's — kept unchanged until the fleet @id backfill.
+                plan_text = item.display_text
+                items.append(
+                    PlanItem(
+                        key=_key(rel, plan_text),
+                        repo=root.name,
+                        path=rel,
+                        line=item.line,
+                        heading=_section(item.section),
+                        text=plan_text,
+                        owner=item.tags.get("owner"),
+                        blocked_by=item.tags.get("blocked_by"),
+                        trigger=item.tags.get("trigger"),
                     )
+                )
     return items
 
 
