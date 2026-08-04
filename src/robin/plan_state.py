@@ -62,6 +62,9 @@ class PlanItem:
     owner: str | None = None
     blocked_by: str | None = None
     trigger: str | None = None
+    # Field tags found on the item's continuation lines — written by the author,
+    # invisible to the line-based parser, so none of the fields above carry them.
+    hidden_tags: tuple[str, ...] = ()
 
 
 def _section(section: str | None) -> str:
@@ -76,6 +79,34 @@ def _key(path: str, text: str) -> str:
     changing who owns it, must not read as the old item closing and a new one
     opening (handoff note 2026-07-26 §4)."""
     return f"{path}::{' '.join(text.lower().split())}"
+
+
+# The field keys a continuation line can hide. Restricted to the keys consumers
+# act on, so an incidental `@word:value` in wrapped prose does not flag the item.
+_FIELD_KEYS = frozenset({"owner", "blocked_by", "trigger", "id"})
+
+
+def _continuation_tags(lines: list[str], after: int) -> tuple[str, ...]:
+    """Field tags on the continuation lines of the item at 1-based line `after`.
+
+    Scanning starts on the line after the item's own: `lines` is 0-indexed, so
+    `lines[after:]` with the 1-based `after` is exactly that.
+
+    The shared parser is line-based, so a tag wrapped onto the next line scrapes
+    as absent while its author believes the item is labelled — 2 of the 27
+    "unowned" items on 2026-08-04 were exactly this (issue #37). Tokenizing is
+    delegated to the shared scraper by re-reading each continuation as a one-line
+    item, so what counts as a tag cannot drift from plan-fields."""
+    found: list[str] = []
+    for line in lines[after:]:
+        stripped = line.strip()
+        if not stripped or not line[0].isspace():
+            break  # blank or a new top-level block: the item ended
+        if scrape_items(line):
+            break  # an indented checkbox is the next item, not a continuation
+        probe = scrape_items(f"- [ ] {stripped}")[0]
+        found.extend(k for k in probe.tags if k in _FIELD_KEYS and k not in found)
+    return tuple(found)
 
 
 def _plan_files(root: Path) -> Iterator[tuple[Path, str]]:
@@ -104,6 +135,7 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
     for root in [config.vault_path, *config.repo_paths]:
         for path, text in _plan_files(root):
             rel = f"{root.name}/{path.relative_to(root)}"
+            lines = text.splitlines()
             for item in scrape_items(text):
                 if item.checked:
                     continue  # the digest's plan section is open work only
@@ -123,6 +155,7 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                         owner=item.tags.get("owner"),
                         blocked_by=item.tags.get("blocked_by"),
                         trigger=item.tags.get("trigger"),
+                        hidden_tags=_continuation_tags(lines, item.line),
                     )
                 )
     return items
@@ -172,13 +205,45 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     )
 
 
-def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
-    """How much of the plan is labelled — currently: how many items nobody owns.
+def _closed_ids(config: RobinConfig) -> dict[str, frozenset[str]]:
+    """`@id` values of checked plan items per mirror, keyed by lowercased repo name.
 
-    An absent `@owner:` is the honest way to record "nobody decided yet", and that is
-    only useful if it is counted: an unowned item has no one to take its next decision.
-    Silent when every open item has an owner — a standing "0 unowned" line every run is
-    the noise that teaches readers to skip the markers that matter.
+    The repo half of a `@blocked_by:<repo>#<slug>` ref matches case-insensitively:
+    live data carries both `maestro#…` and `Maestro#…` spellings of one repo."""
+    return {
+        root.name.lower(): frozenset(
+            item.item_id
+            for _, text in _plan_files(root)
+            for item in scrape_items(text)
+            if item.checked and item.item_id
+        )
+        for root in [config.vault_path, *config.repo_paths]
+    }
+
+
+def _blocker_fired(ref: str, closed: dict[str, frozenset[str]]) -> bool:
+    """True when the ref resolves to a checked item — the condition has fired.
+
+    A ref that resolves to nothing stays False: a typo or a removed target is
+    ambiguous, and claiming it fired would be invented evidence."""
+    repo, sep, slug = ref.partition("#")
+    return bool(sep) and slug in closed.get(repo.lower(), frozenset())
+
+
+def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
+    """How much of the plan is labelled — and what the unowned items actually are.
+
+    A single "N unowned" mixed three different facts (issue #37, triage of the
+    2026-08-04 digest): items nobody picked up, items waiting on a stated blocker
+    or trigger (being unowned does not block those by construction), and items
+    whose tags sit on a continuation line the line-based parser cannot see. The
+    breakdown reports each on its own; empty groups stay silent. On top of it,
+    the one machine-checkable urgency: an unowned item whose blocker is already
+    closed has a fired condition and nobody owning the reaction. Free-text
+    triggers are not machine-checkable — the conditional count is all they get.
+
+    Silent when every open item has an owner — a standing "0 unowned" line every
+    run is the noise that teaches readers to skip the markers that matter.
 
     Movement ("was N") needs the previous snapshot to have tracked owners at all;
     entries written before it did are silent rather than counted as unowned, which
@@ -195,14 +260,53 @@ def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
     if previous is not None and all("owner" in entry for entry in previous.values()):
         before = sum(1 for entry in previous.values() if not entry.get("owner"))
         was = f" (was {before} at the previous {kind} digest)"
-    labelled = sum(1 for item in items if item.blocked_by or item.trigger)
-    return Hit(
-        "(plan-fields)",
-        1,
-        f"{len(unowned)} of {len(items)} open plan items name no owner{was} — nobody "
-        "is on the hook for their next decision. "
-        f"{labelled} item(s) state a blocker or a trigger.",
-    )
+    malformed = [item for item in unowned if item.hidden_tags]
+    conditional = [
+        item
+        for item in unowned
+        if not item.hidden_tags and (item.blocked_by or item.trigger)
+    ]
+    actionable = [
+        item
+        for item in unowned
+        if not (item.hidden_tags or item.blocked_by or item.trigger)
+    ]
+    groups = [
+        (len(actionable), "actionable — nobody is on the hook for their next step"),
+        (
+            len(conditional),
+            "conditional — a stated blocker or trigger, not ownership, is what "
+            "they wait on",
+        ),
+        (
+            len(malformed),
+            "malformed — tags on a continuation line, invisible to the line-based "
+            "parser, so likely labelled rather than unowned",
+        ),
+    ]
+    breakdown = "; ".join(f"{count} {label}" for count, label in groups if count)
+    parts = [
+        f"{len(unowned)} of {len(items)} open plan items name no owner{was}: "
+        f"{breakdown}."
+    ]
+    # Closed-id resolution reads every plan file again, so it is paid only when
+    # some unowned item actually names a blocker to resolve (Copilot, PR #38).
+    blocked = [item for item in conditional if item.blocked_by]
+    fired = []
+    if blocked:
+        closed = _closed_ids(config)
+        fired = [
+            item
+            for item in blocked
+            if item.blocked_by and _blocker_fired(item.blocked_by, closed)
+        ]
+    if fired:
+        parts.append(
+            f"WARNING: {len(fired)} unowned item(s) wait on a blocker that is "
+            "already closed — the condition fired and nobody owns the reaction: "
+            f"{_summarize([item.text for item in fired])}."
+        )
+    return Hit("(plan-fields)", 1, " ".join(parts))
 
 
 def _state_path(config: RobinConfig, kind: str) -> Path:

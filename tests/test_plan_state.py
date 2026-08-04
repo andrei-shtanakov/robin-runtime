@@ -271,6 +271,97 @@ def test_unowned_items_are_counted_against_the_total(tmp_path: Path) -> None:
     assert "2 of 3" in hit.text
 
 
+def test_unowned_items_are_broken_down_by_what_stands_in_their_way(
+    tmp_path: Path,
+) -> None:
+    # One number mixed three different facts (issue #37, triage of the 2026-08-04
+    # digest): items nobody picked up, items waiting on a stated condition, and
+    # items whose labels the line-based parser cannot even see.
+    config = _config(
+        tmp_path,
+        "- [ ] pick me up\n"
+        "- [ ] me too\n"
+        "- [ ] waiting @blocked_by:maestro#gate\n"
+        '- [ ] watching @trigger:"var file > 50 MB"\n',
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "4 of 4" in hit.text
+    assert "2 actionable" in hit.text
+    assert "2 conditional" in hit.text
+    assert "malformed" not in hit.text  # empty groups stay silent
+
+
+def test_tags_on_a_continuation_line_are_reported_as_malformed(tmp_path: Path) -> None:
+    # 2 of the 27 "unowned" items on 2026-08-04 were false positives: their
+    # @owner/@id sat on a wrapped continuation line, invisible to the line-based
+    # parser. They are a labelling defect, not an unowned item, and folding them
+    # into "actionable" misstates the backlog.
+    config = _config(
+        tmp_path,
+        "- [ ] wrapped item whose tags spilled onto the next line\n"
+        "  @owner:andrei @id:wrapped-item\n"
+        "- [ ] genuinely unowned\n",
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "1 actionable" in hit.text
+    assert "1 malformed" in hit.text
+    assert "continuation line" in hit.text
+
+
+def test_a_prose_continuation_line_is_not_malformed(tmp_path: Path) -> None:
+    # Wrapped prose without tags is just formatting; only invisible tags make an
+    # item malformed.
+    config = _config(
+        tmp_path,
+        "- [ ] wrapped item whose prose\n  spills onto the next line\n",
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "1 actionable" in hit.text
+    assert "malformed" not in hit.text
+
+
+def test_a_closed_blocker_target_without_an_owner_is_warned_about(
+    tmp_path: Path,
+) -> None:
+    # The condition already fired and nobody owns the reaction — the one state in
+    # the unowned set that is both machine-checkable and urgent (issue #37 §2).
+    # The repo half of the ref matches case-insensitively: live data carries both
+    # `maestro#…` and `Maestro#…` spellings.
+    config = _config(tmp_path, "- [x] ship the gate @id:gate\n")
+    arbiter = tmp_path / "arbiter"
+    arbiter.mkdir()
+    (arbiter / "TODO.md").write_text(
+        "- [ ] react to the gate @blocked_by:Maestro#gate\n"
+    )
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[tmp_path / "maestro", arbiter],
+        var_dir=tmp_path / "var",
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "already closed" in hit.text
+    assert "react to the gate" in hit.text
+
+
+def test_an_open_or_unresolvable_blocker_target_does_not_warn(tmp_path: Path) -> None:
+    # An open target means the item is legitimately waiting; a ref that resolves to
+    # nothing is ambiguous (typo or removed item) and must not be claimed as fired.
+    config = _config(
+        tmp_path,
+        "- [ ] ship the gate @id:gate\n"
+        "- [ ] waiting @blocked_by:maestro#gate\n"
+        "- [ ] dangling @blocked_by:maestro#no-such-id\n",
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "already closed" not in hit.text
+    assert "2 conditional" in hit.text
+
+
 def test_a_fully_owned_plan_says_nothing(tmp_path: Path) -> None:
     # Nothing to report is reported as nothing: a standing "0 unowned" line every run
     # is the noise that makes real markers get skipped.
