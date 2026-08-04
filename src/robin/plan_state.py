@@ -87,7 +87,10 @@ _FIELD_KEYS = frozenset({"owner", "blocked_by", "trigger", "id"})
 
 
 def _continuation_tags(lines: list[str], after: int) -> tuple[str, ...]:
-    """Field tags written on an item's continuation lines (0-indexed from `after`).
+    """Field tags on the continuation lines of the item at 1-based line `after`.
+
+    Scanning starts on the line after the item's own: `lines` is 0-indexed, so
+    `lines[after:]` with the 1-based `after` is exactly that.
 
     The shared parser is line-based, so a tag wrapped onto the next line scrapes
     as absent while its author believes the item is labelled — 2 of the 27
@@ -286,17 +289,22 @@ def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
         f"{len(unowned)} of {len(items)} open plan items name no owner{was}: "
         f"{breakdown}."
     ]
-    closed = _closed_ids(config)
-    fired = [
-        item
-        for item in conditional
-        if item.blocked_by and _blocker_fired(item.blocked_by, closed)
-    ]
+    # Closed-id resolution reads every plan file again, so it is paid only when
+    # some unowned item actually names a blocker to resolve (Copilot, PR #38).
+    blocked = [item for item in conditional if item.blocked_by]
+    fired = []
+    if blocked:
+        closed = _closed_ids(config)
+        fired = [
+            item
+            for item in blocked
+            if item.blocked_by and _blocker_fired(item.blocked_by, closed)
+        ]
     if fired:
         parts.append(
-            f"WARNING: {len(fired)} of the conditional item(s) wait on a blocker "
-            "that is already closed — the condition fired and nobody owns the "
-            f"reaction: {_summarize([item.text for item in fired])}."
+            f"WARNING: {len(fired)} unowned item(s) wait on a blocker that is "
+            "already closed — the condition fired and nobody owns the reaction: "
+            f"{_summarize([item.text for item in fired])}."
         )
     return Hit("(plan-fields)", 1, " ".join(parts))
 
