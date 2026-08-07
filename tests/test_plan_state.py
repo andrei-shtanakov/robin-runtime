@@ -298,6 +298,19 @@ def test_typed_ownership_categories_are_independent_from_movement(
     assert "ACTION:" not in hit.text  # missing does not imply ready to move
 
 
+def test_condition_diagnostics_keep_their_source_across_two_plan_files(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path, "- [x] shipped @id:done\n\n")
+    (tmp_path / "maestro" / "ROADMAP.md").write_text(
+        "# Later\n- [ ] stale @id:next @blocked_by:todo://maestro/done\n"
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "stale-condition=1" in hit.text
+    assert "actionable=0" in hit.text
+
+
 def test_unowned_items_are_broken_down_by_what_stands_in_their_way(
     tmp_path: Path,
 ) -> None:

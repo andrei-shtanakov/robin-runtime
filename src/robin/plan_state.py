@@ -248,9 +248,11 @@ def _fleet_view(
     inputs: list[RepoInput] = []
     source_lines: dict[tuple[str, int], tuple[str, str, int]] = {}
     for root in roots:
-        chunks: list[str] = []
-        next_line = 1
+        combined = ""
         for path, text in _plan_files(root):
+            if combined and not combined.endswith(("\n", "\r")):
+                combined += "\n"
+            next_line = len(combined.splitlines()) + 1
             rel = f"{root.name}/{path.relative_to(root)}"
             for item in scrape_items(text):
                 source_lines[(root.name.lower(), next_line + item.line - 1)] = (
@@ -258,12 +260,11 @@ def _fleet_view(
                     rel,
                     item.line,
                 )
-            chunks.append(text.rstrip("\r\n"))
-            next_line += len(text.splitlines()) + 1
+            combined += text
         inputs.append(
             RepoInput(
                 root.name.lower(),
-                todo_text="\n".join(chunks) or None,
+                todo_text=combined or None,
                 available=root.is_dir(),
             )
         )
