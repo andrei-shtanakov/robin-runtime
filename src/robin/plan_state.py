@@ -11,8 +11,9 @@ Items are keyed by file + normalized text rather than by line, so edits elsewher
 the file do not manufacture a close/open pair; a reworded item does read as one
 closed and one opened, which is the honest reading of a checkbox list.
 
-Blocked/unblocked and trigger-reached counters need `owner` / `blocked_by` /
-`trigger` fields the plan files do not carry yet; they slot in here once they do.
+Operational fields are parsed by the shared plan-fields package.  Robin projects
+its typed-owner and blocker diagnostics into an explanatory digest; it does not
+define a second owner grammar or graph checker.
 """
 
 from __future__ import annotations
@@ -25,7 +26,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from plan_fields import scrape_items
+from plan_fields import (
+    ManifestIndex,
+    RepoInput,
+    check_fleet,
+    check_legacy_fleet,
+    parse_fleet,
+    parse_owner,
+    scrape_items,
+)
 
 from .config import RobinConfig
 from .kb import Hit
@@ -39,6 +48,30 @@ PLAN_GLOBS = ("TODO.md", "ROADMAP.md")
 STALE_AFTER_DAYS = 30  # an item open this long is a decision, not a task
 _MAX_NAMED = 5  # named examples per counter; the counts carry the rest
 _STATE_VERSION = 1
+
+_OWNERSHIP = (
+    "human-owned",
+    "repo-owned",
+    "TBD",
+    "missing",
+    "invalid-owner",
+    "unknown-repo-owner",
+)
+_MOVEMENT = (
+    "actionable",
+    "waiting-by-trigger",
+    "waiting-by-blocker",
+    "stale-condition",
+    "malformed-condition",
+)
+_MALFORMED_CONDITION_CODES = {
+    "PF-ID-DANGLING",
+    "PF-BLOCKER-DANGLING",
+    "PF-BLOCKER-UNRESOLVABLE",
+    "PF-BLOCKER-NO-TODO",
+    "PF-BLOCKER-REPO-UNKNOWN",
+    "PF-LEGACY-AMBIGUOUS",
+}
 
 # The syntactic scan — "what is a checkbox item", including the inline tags
 # `@owner` / `@blocked_by` / `@trigger` — is the shared plan-fields package
@@ -125,15 +158,16 @@ def _plan_files(root: Path) -> Iterator[tuple[Path, str]]:
             yield path, text
 
 
-def open_items(config: RobinConfig) -> list[PlanItem]:
-    """Every open plan item across the mirrors, unbudgeted, in repo-major order.
-
-    The digest's prompt budget is applied downstream (digest.plan_hits); state and
-    counters must see the complete set or the delta would report budget artefacts
-    as movement."""
+def _scan_plans(
+    config: RobinConfig,
+) -> tuple[list[PlanItem], dict[str, list[tuple[Path, str]]]]:
+    """Read each plan file once, returning open items and the frozen source texts."""
     items: list[PlanItem] = []
+    sources: dict[str, list[tuple[Path, str]]] = {}
     for root in [config.vault_path, *config.repo_paths]:
-        for path, text in _plan_files(root):
+        root_sources = list(_plan_files(root))
+        sources[root.name.lower()] = root_sources
+        for path, text in root_sources:
             rel = f"{root.name}/{path.relative_to(root)}"
             lines = text.splitlines()
             for item in scrape_items(text):
@@ -158,7 +192,16 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                         hidden_tags=_continuation_tags(lines, item.line),
                     )
                 )
-    return items
+    return items, sources
+
+
+def open_items(config: RobinConfig) -> list[PlanItem]:
+    """Every open plan item across the mirrors, unbudgeted, in repo-major order.
+
+    The digest's prompt budget is applied downstream (digest.plan_hits); state and
+    counters must see the complete set or the delta would report budget artefacts
+    as movement."""
+    return _scan_plans(config)[0]
 
 
 def coverage_hit(config: RobinConfig) -> Hit | None:
@@ -205,106 +248,134 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     )
 
 
-def _closed_ids(config: RobinConfig) -> dict[str, frozenset[str]]:
-    """`@id` values of checked plan items per mirror, keyed by lowercased repo name.
-
-    The repo half of a `@blocked_by:<repo>#<slug>` ref matches case-insensitively:
-    live data carries both `maestro#…` and `Maestro#…` spellings of one repo."""
-    return {
-        root.name.lower(): frozenset(
-            item.item_id
-            for _, text in _plan_files(root)
-            for item in scrape_items(text)
-            if item.checked and item.item_id
+def _fleet_view(
+    config: RobinConfig,
+    sources: dict[str, list[tuple[Path, str]]],
+) -> tuple[ManifestIndex, dict[tuple[str, str, int], set[str]]]:
+    """Resolve plan conditions once over Robin's frozen read-only mirror set."""
+    roots = [config.vault_path, *config.repo_paths]
+    names = frozenset(root.name.lower() for root in roots)
+    index = ManifestIndex(names, {})
+    inputs: list[RepoInput] = []
+    source_lines: dict[tuple[str, int], tuple[str, str, int]] = {}
+    for root in roots:
+        combined = ""
+        for path, text in sources[root.name.lower()]:
+            if combined and not combined.endswith(("\n", "\r")):
+                combined += "\n"
+            next_line = len(combined.splitlines()) + 1
+            rel = f"{root.name}/{path.relative_to(root)}"
+            for item in scrape_items(text):
+                source_lines[(root.name.lower(), next_line + item.line - 1)] = (
+                    root.name.lower(),
+                    rel,
+                    item.line,
+                )
+            combined += text
+        inputs.append(
+            RepoInput(
+                root.name.lower(),
+                todo_text=combined or None,
+                available=root.is_dir(),
+            )
         )
-        for root in [config.vault_path, *config.repo_paths]
+    snapshot = parse_fleet(inputs, index)
+    codes: dict[tuple[str, str, int], set[str]] = {}
+    for diagnostic in [*snapshot["diagnostics"], *check_fleet(snapshot)]:
+        provenance = diagnostic.get("provenance") or {}
+        repo, line = provenance.get("repo"), provenance.get("line")
+        if isinstance(repo, str) and isinstance(line, int):
+            source = source_lines.get((repo, line))
+            if source is not None:
+                codes.setdefault(source, set()).add(diagnostic["code"])
+    exclude = {
+        (ref["provenance"]["repo"], ref["raw_ref"]) for ref in snapshot["references"]
     }
+    for diagnostic in check_legacy_fleet(inputs, index, exclude=exclude):
+        source = source_lines.get((diagnostic.source_repo, diagnostic.source_line))
+        if source is not None:
+            codes.setdefault(source, set()).add(diagnostic.code)
+    return index, codes
 
 
-def _blocker_fired(ref: str, closed: dict[str, frozenset[str]]) -> bool:
-    """True when the ref resolves to a checked item — the condition has fired.
+def _ownership_bucket(owner: str | None, index: ManifestIndex) -> str:
+    owner_ref, _owner_role, diagnostic = parse_owner(owner)
+    if diagnostic == "PF-OWNER-MISSING":
+        return "missing"
+    if diagnostic is not None:
+        return "invalid-owner"
+    assert owner_ref is not None
+    if owner_ref["kind"] in {"github_user", "github_team"}:
+        return "human-owned"
+    if owner_ref["kind"] == "tbd":
+        return "TBD"
+    if owner_ref["kind"] == "repository":
+        return (
+            "repo-owned"
+            if owner_ref["id"] in index.canonical_keys
+            else "unknown-repo-owner"
+        )
+    raise AssertionError(f"unexpected owner kind: {owner_ref['kind']}")
 
-    A ref that resolves to nothing stays False: a typo or a removed target is
-    ambiguous, and claiming it fired would be invented evidence."""
-    repo, sep, slug = ref.partition("#")
-    return bool(sep) and slug in closed.get(repo.lower(), frozenset())
+
+def _movement_bucket(item: PlanItem, codes: set[str]) -> str:
+    if codes & _MALFORMED_CONDITION_CODES:
+        return "malformed-condition"
+    if "PF-BLOCKER-STALE" in codes or (item.blocked_by and "PF-LEGACY-STALE" in codes):
+        return "stale-condition"
+    if item.blocked_by:
+        return "waiting-by-blocker"
+    if item.trigger:
+        return "waiting-by-trigger"
+    return "actionable"
 
 
 def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
-    """How much of the plan is labelled — and what the unowned items actually are.
-
-    A single "N unowned" mixed three different facts (issue #37, triage of the
-    2026-08-04 digest): items nobody picked up, items waiting on a stated blocker
-    or trigger (being unowned does not block those by construction), and items
-    whose tags sit on a continuation line the line-based parser cannot see. The
-    breakdown reports each on its own; empty groups stay silent. On top of it,
-    the one machine-checkable urgency: an unowned item whose blocker is already
-    closed has a fired condition and nobody owning the reaction. Free-text
-    triggers are not machine-checkable — the conditional count is all they get.
-
-    Silent when every open item has an owner — a standing "0 unowned" line every
-    run is the noise that teaches readers to skip the markers that matter.
-
-    Movement ("was N") needs the previous snapshot to have tracked owners at all;
-    entries written before it did are silent rather than counted as unowned, which
-    would invent a regression that never happened."""
-    items = open_items(config)
-    unowned = [item for item in items if not item.owner]
-    if not unowned:
+    """Typed ownership and independent movement totals for the open fleet plan."""
+    items, sources = _scan_plans(config)
+    if not items:
         return None
+    index, codes = _fleet_view(config, sources)
+    ownership = {bucket: 0 for bucket in _OWNERSHIP}
+    movement = {bucket: 0 for bucket in _MOVEMENT}
+    matrix = {owner: {state: 0 for state in _MOVEMENT} for owner in _OWNERSHIP}
+    for item in items:
+        owner = _ownership_bucket(item.owner, index)
+        state = _movement_bucket(
+            item, codes.get((item.repo.lower(), item.path, item.line), set())
+        )
+        ownership[owner] += 1
+        movement[state] += 1
+        matrix[owner][state] += 1
+    assert sum(ownership.values()) == len(items)
+    assert sum(movement.values()) == len(items)
+    missing_actionable = matrix["missing"]["actionable"]
     previous = load_state(config, kind)
-    was = ""
-    # `is not None`, not truthiness: a snapshot with no items is a baseline of zero,
-    # not a missing baseline, and treating it as missing hides the regression from an
-    # empty plan to an unowned one. (An empty snapshot tracked owners vacuously.)
+    was_missing = ""
     if previous is not None and all("owner" in entry for entry in previous.values()):
-        before = sum(1 for entry in previous.values() if not entry.get("owner"))
-        was = f" (was {before} at the previous {kind} digest)"
-    malformed = [item for item in unowned if item.hidden_tags]
-    conditional = [
-        item
-        for item in unowned
-        if not item.hidden_tags and (item.blocked_by or item.trigger)
-    ]
-    actionable = [
-        item
-        for item in unowned
-        if not (item.hidden_tags or item.blocked_by or item.trigger)
-    ]
-    groups = [
-        (len(actionable), "actionable — nobody is on the hook for their next step"),
-        (
-            len(conditional),
-            "conditional — a stated blocker or trigger, not ownership, is what "
-            "they wait on",
-        ),
-        (
-            len(malformed),
-            "malformed — tags on a continuation line, invisible to the line-based "
-            "parser, so likely labelled rather than unowned",
-        ),
-    ]
-    breakdown = "; ".join(f"{count} {label}" for count, label in groups if count)
+        before = sum(
+            parse_owner(entry.get("owner"))[2] == "PF-OWNER-MISSING"
+            for entry in previous.values()
+        )
+        was_missing = f" (was missing={before} at the previous {kind} digest)"
     parts = [
-        f"{len(unowned)} of {len(items)} open plan items name no owner{was}: "
-        f"{breakdown}."
+        f"Ownership of {len(items)} open plan items: "
+        + ", ".join(f"{name}={ownership[name]}" for name in _OWNERSHIP)
+        + was_missing
+        + ". Movement: "
+        + ", ".join(f"{name}={movement[name]}" for name in _MOVEMENT)
+        + "."
     ]
-    # Closed-id resolution reads every plan file again, so it is paid only when
-    # some unowned item actually names a blocker to resolve (Copilot, PR #38).
-    blocked = [item for item in conditional if item.blocked_by]
-    fired = []
-    if blocked:
-        closed = _closed_ids(config)
-        fired = [
-            item
-            for item in blocked
-            if item.blocked_by and _blocker_fired(item.blocked_by, closed)
-        ]
-    if fired:
+    if missing_actionable:
         parts.append(
-            f"WARNING: {len(fired)} unowned item(s) wait on a blocker that is "
-            "already closed — the condition fired and nobody owns the reaction: "
-            f"{_summarize([item.text for item in fired])}."
+            f"ACTION: {missing_actionable} item(s) are canonically both missing "
+            "an owner and actionable; inspect these unattended next steps."
+        )
+    hidden = sum(bool(item.hidden_tags) for item in items)
+    if hidden:
+        parts.append(
+            f"WARNING: {hidden} item(s) put field tags on continuation lines; "
+            "the canonical line-based parser cannot see them."
         )
     return Hit("(plan-fields)", 1, " ".join(parts))
 
