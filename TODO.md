@@ -36,10 +36,10 @@
 
 - [x] Разобрать теги `@owner:` / `@blocked_by:` / `@trigger:` в `plan_state` и **исключить их из ключа идентичности** пункта. Блокирует разметку планов в остальных репо: без этого первая же разметка отчиталась бы как «56 закрыто, 56 открыто». Формат — §3 handoff-ноты 2026-07-26 (#27)
 - [x] Счётчик «пунктов без владельца» — отсутствие `@owner:` измеримо и честнее пустой колонки в реестре (#28). Замер 2026-07-26: было 67 из 67, к вечеру — **48 из 109**: соседи начали размечать, и счётчик показывает движение, как и задумано
-- [ ] Счётчики `Unblocked` / `Newly blocked` / `Trigger reached` в дельте @owner:andrei — **триггер сработал**: размечены Maestro (35 пунктов), spec-runner (16), arbiter (7), proctor (3); в графе 15 рёбер `@blocked_by:` и 20 `@trigger:`, отчитываться уже есть о чем. Нужно: сохранять `blocked_by`/`trigger` в снапшоте (сейчас пишется только `owner`) и решить, как резолвить `<repo>#<slug>` — в живых данных встречаются и `maestro#…`, и `Maestro#…`. `atp-platform` (43 пункта) пока без тегов — это сторона ATP, не блокирует @id:snapshot-blocker-trigger-fields
+- [ ] Счётчики `Unblocked` / `Newly blocked` / `Trigger reached` в дельте @owner:github:andrei-shtanakov — **триггер сработал**: размечены Maestro (35 пунктов), spec-runner (16), arbiter (7), proctor (3); в графе 15 рёбер `@blocked_by:` и 20 `@trigger:`, отчитываться уже есть о чем. Нужно: сохранять `blocked_by`/`trigger` в снапшоте (сейчас пишется только `owner`) и решить, как резолвить `<repo>#<slug>` — в живых данных встречаются и `maestro#…`, и `Maestro#…`. `atp-platform` (43 пункта) пока без тегов — это сторона ATP, не блокирует @id:snapshot-blocker-trigger-fields
 - [x] Выкатить на VPS накопленное (#20–#24) и добавить `ROBIN_PLAN_EXEMPT=prograph-vault` в `.env`: без строки `prograph-vault` продолжил бы числиться пробелом покрытия. Сделано 2026-07-26, строка в `/srv/robin/robin.env`
-- [ ] Обновить докстринг `plan_state.py` @owner:andrei — шапка модуля всё ещё утверждает, что план-файлы полей не несут, хотя #27 их разбирает, а соседи уже проставили. Мелочь, но это первое, что читает следующая сессия @id:plan-state-docstring-refresh
-- [x] Разбивка unowned в отчёте полей: actionable / conditional (`@blocked_by`|`@trigger`) / malformed (теги на строке-продолжении, невидимы построчному парсеру) + предупреждение о пунктах, чей `@blocked_by`-таргет уже закрыт, а владельца реакции нет; свободнотекстовые `@trigger` машинно не проверяемы — для них достаточно счётчика. Запрос devtools, issue #37 (#38, merge 097e846) @owner:andrei @id:digest-unowned-breakdown
+- [ ] Обновить докстринг `plan_state.py` @owner:github:andrei-shtanakov — шапка модуля всё ещё утверждает, что план-файлы полей не несут, хотя #27 их разбирает, а соседи уже проставили. Мелочь, но это первое, что читает следующая сессия @id:plan-state-docstring-refresh
+- [x] Разбивка unowned в отчёте полей: actionable / conditional (`@blocked_by`|`@trigger`) / malformed (теги на строке-продолжении, невидимы построчному парсеру) + предупреждение о пунктах, чей `@blocked_by`-таргет уже закрыт, а владельца реакции нет; свободнотекстовые `@trigger` машинно не проверяемы — для них достаточно счётчика. Запрос devtools, issue #37 (#38, merge 097e846) @owner:github:andrei-shtanakov @id:digest-unowned-breakdown
 - [x] Перевести отчёт полей на plan-fields v2: независимые ownership-категории (`human-owned` / `repo-owned` / `TBD` / `missing` / invalid) и movement-категории (`actionable` / trigger / blocker / stale / malformed), с отдельным сигналом `missing × actionable` @owner:github:andrei-shtanakov @id:typed-owner-movement-reporting
 
 ## Список зеркал
@@ -73,20 +73,20 @@
 доклонированы (16 зеркал, 9 с план-файлом). Осталась корневая причина — молчаливый
 фильтр — и две копии списка, которым теперь запрещено расходиться тестом.
 
-- [ ] Перестать терять записи молча: непрорезолвившиеся имена — в отчёт рядом со строкой exempt @owner:andrei — корневая причина, остальные пункты раздела без неё лечат симптом. Отдельно бьёт на VPS: `sync-mirrors.sh` только подтягивает существующие клоны, поэтому добавленное в список репо без ручного клона там тихо отсутствует @id:report-unresolved-names
+- [ ] Перестать терять записи молча: непрорезолвившиеся имена — в отчёт рядом со строкой exempt @owner:github:andrei-shtanakov — корневая причина, остальные пункты раздела без неё лечат симптом. Отдельно бьёт на VPS: `sync-mirrors.sh` только подтягивает существующие клоны, поэтому добавленное в список репо без ручного клона там тихо отсутствует @id:report-unresolved-names
 - [x] Канонические имена в оба списка: `maestro`, `libretto` (#29). Заодно ушла зависимость от редиректа GitHub: `setup.sh` строит URL из того же имени, поэтому bring-up больше не воспроизводит мёртвые каталоги
 - [x] Добавить `spec-runner-vscode`, `research-bench`, `github-checker` (#29) — 38 / 106 / 82 коммита за 30 дней, ни одного не было в списке. Решение владельца 2026-07-26: `devtools`, `robin-toolkit`, `discovery-toolkit`, `ai-orchestrators-workspace` сознательно остаются вне обзора
 - [x] Зеркала на VPS: `mv Maestro maestro`, `mv open-prose libretto`, канонические remote-URL, доклонированы три новых (2026-07-26). Симлинки со старых имён оставлены, чтобы задеплоенный код не терял репо до мержа — проверено: резолвится 12 из 12
-- [ ] Убрать back-compat симлинки `mirrors/Maestro` и `mirrors/open-prose` @owner:andrei @trigger:"деплой #29 на VPS" — они нужны только на время, пока на VPS живёт код со старым списком; после деплоя это лишние пути, по которым `sync-mirrors.sh` дважды тянет один репо @id:drop-mirror-symlinks
-- [ ] Один источник списка зеркал вместо двух @owner:andrei — `src/robin/config.py:_ECOSYSTEM_REPOS` (что Robin читает) и `deploy/setup.sh:REPOS` (что клонируется на VPS) по-прежнему копии; #29 лишь запретил им расходиться (`test_mirror_list_matches_the_deploy_script`). Радикальнее — выводить список из содержимого каталога с deny-list (§2.1 ноты): тогда рейнейм и новый репо не требуют правки кода вовсе @id:single-mirror-list-source
+- [ ] Убрать back-compat симлинки `mirrors/Maestro` и `mirrors/open-prose` @owner:github:andrei-shtanakov @trigger:"деплой #29 на VPS" — они нужны только на время, пока на VPS живёт код со старым списком; после деплоя это лишние пути, по которым `sync-mirrors.sh` дважды тянет один репо @id:drop-mirror-symlinks
+- [ ] Один источник списка зеркал вместо двух @owner:github:andrei-shtanakov — `src/robin/config.py:_ECOSYSTEM_REPOS` (что Robin читает) и `deploy/setup.sh:REPOS` (что клонируется на VPS) по-прежнему копии; #29 лишь запретил им расходиться (`test_mirror_list_matches_the_deploy_script`). Радикальнее — выводить список из содержимого каталога с deny-list (§2.1 ноты): тогда рейнейм и новый репо не требуют правки кода вовсе @id:single-mirror-list-source
 
 ## Цикл самоулучшения
 
-- [ ] Ступень 4: разобранные кластеры weekly self-review → eval-набор в atp-platform. Сейчас `selfreview.py` только называет ступень в отчёте, механизма передачи нет. Кросс-репно — требует стороны ATP @owner:andrei @id:selfreview-eval-set-export
+- [ ] Ступень 4: разобранные кластеры weekly self-review → eval-набор в atp-platform. Сейчас `selfreview.py` только называет ступень в отчёте, механизма передачи нет. Кросс-репно — требует стороны ATP @owner:github:andrei-shtanakov @id:selfreview-eval-set-export
 
 ## Наблюдаемость и эксплуатация
 
-- [ ] Решить судьбу `var/`-мусора при долгой работе: `interactions.jsonl`, `gaps.jsonl` и снапшоты планов растут без ротации @owner:andrei @trigger:"любой из файлов var/ > 50 МБ" @id:var-file-rotation
+- [ ] Решить судьбу `var/`-мусора при долгой работе: `interactions.jsonl`, `gaps.jsonl` и снапшоты планов растут без ротации @owner:github:andrei-shtanakov @trigger:"любой из файлов var/ > 50 МБ" @id:var-file-rotation
 
 ## Ждём соседей (не работа Robin, но от неё зависит форма обзоров)
 
