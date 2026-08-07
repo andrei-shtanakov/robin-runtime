@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import robin.plan_state as plan_state
 
 from robin.config import RobinConfig
 from robin.digest import plan_hits
@@ -309,6 +310,22 @@ def test_condition_diagnostics_keep_their_source_across_two_plan_files(
     assert hit is not None
     assert "stale-condition=1" in hit.text
     assert "actionable=0" in hit.text
+
+
+def test_fields_report_reads_each_mirror_plan_set_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path, "- [ ] one\n")
+    original = plan_state._plan_files
+    calls: list[Path] = []
+
+    def counted(root: Path):
+        calls.append(root)
+        yield from original(root)
+
+    monkeypatch.setattr(plan_state, "_plan_files", counted)
+    assert fields_hit(config, "daily") is not None
+    assert calls == [config.vault_path, *config.repo_paths]
 
 
 def test_unowned_items_are_broken_down_by_what_stands_in_their_way(

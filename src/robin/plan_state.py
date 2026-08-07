@@ -158,15 +158,16 @@ def _plan_files(root: Path) -> Iterator[tuple[Path, str]]:
             yield path, text
 
 
-def open_items(config: RobinConfig) -> list[PlanItem]:
-    """Every open plan item across the mirrors, unbudgeted, in repo-major order.
-
-    The digest's prompt budget is applied downstream (digest.plan_hits); state and
-    counters must see the complete set or the delta would report budget artefacts
-    as movement."""
+def _scan_plans(
+    config: RobinConfig,
+) -> tuple[list[PlanItem], dict[str, list[tuple[Path, str]]]]:
+    """Read each plan file once, returning open items and the frozen source texts."""
     items: list[PlanItem] = []
+    sources: dict[str, list[tuple[Path, str]]] = {}
     for root in [config.vault_path, *config.repo_paths]:
-        for path, text in _plan_files(root):
+        root_sources = list(_plan_files(root))
+        sources[root.name.lower()] = root_sources
+        for path, text in root_sources:
             rel = f"{root.name}/{path.relative_to(root)}"
             lines = text.splitlines()
             for item in scrape_items(text):
@@ -191,7 +192,16 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
                         hidden_tags=_continuation_tags(lines, item.line),
                     )
                 )
-    return items
+    return items, sources
+
+
+def open_items(config: RobinConfig) -> list[PlanItem]:
+    """Every open plan item across the mirrors, unbudgeted, in repo-major order.
+
+    The digest's prompt budget is applied downstream (digest.plan_hits); state and
+    counters must see the complete set or the delta would report budget artefacts
+    as movement."""
+    return _scan_plans(config)[0]
 
 
 def coverage_hit(config: RobinConfig) -> Hit | None:
@@ -240,6 +250,7 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
 
 def _fleet_view(
     config: RobinConfig,
+    sources: dict[str, list[tuple[Path, str]]],
 ) -> tuple[ManifestIndex, dict[tuple[str, str, int], set[str]]]:
     """Resolve plan conditions once over Robin's frozen read-only mirror set."""
     roots = [config.vault_path, *config.repo_paths]
@@ -249,7 +260,7 @@ def _fleet_view(
     source_lines: dict[tuple[str, int], tuple[str, str, int]] = {}
     for root in roots:
         combined = ""
-        for path, text in _plan_files(root):
+        for path, text in sources[root.name.lower()]:
             if combined and not combined.endswith(("\n", "\r")):
                 combined += "\n"
             next_line = len(combined.splitlines()) + 1
@@ -321,10 +332,10 @@ def _movement_bucket(item: PlanItem, codes: set[str]) -> str:
 
 def fields_hit(config: RobinConfig, kind: str) -> Hit | None:
     """Typed ownership and independent movement totals for the open fleet plan."""
-    items = open_items(config)
+    items, sources = _scan_plans(config)
     if not items:
         return None
-    index, codes = _fleet_view(config)
+    index, codes = _fleet_view(config, sources)
     ownership = {bucket: 0 for bucket in _OWNERSHIP}
     movement = {bucket: 0 for bucket in _MOVEMENT}
     matrix = {owner: {state: 0 for state in _MOVEMENT} for owner in _OWNERSHIP}
