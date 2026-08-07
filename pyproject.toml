@@ -18,7 +18,7 @@ dependencies = [
 # (ADR-ECO-005 PF-7; see the package's CONSUMING.md). Bumping the pin is a
 # deliberate PR; contract drift is caught upstream by PF-6.
 [tool.uv.sources]
-plan-fields = { git = "https://github.com/andrei-shtanakov/dispatcher", rev = "145b01285b11ad4f0c1bcd74b717fbb4a6c25ecf", subdirectory = "packages/plan-fields" }
+plan-fields = { git = "https://github.com/andrei-shtanakov/dispatcher", rev = "65f03ea9e5964e4488bcd254e491fc42abb1bd96", subdirectory = "packages/plan-fields" }
 
 [build-system]
 requires = ["hatchling"]

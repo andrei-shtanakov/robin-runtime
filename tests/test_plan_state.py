@@ -264,11 +264,38 @@ def test_hits_surface_the_fields_in_plain_language(tmp_path: Path) -> None:
 
 def test_unowned_items_are_counted_against_the_total(tmp_path: Path) -> None:
     config = _config(
-        tmp_path, "- [ ] mine @owner:andrei\n- [ ] nobody's\n- [ ] also nobody's\n"
+        tmp_path,
+        "- [ ] mine @owner:github:andrei-shtanakov\n"
+        "- [ ] nobody's\n- [ ] also nobody's\n",
     )
     hit = fields_hit(config, "daily")
     assert hit is not None and hit.path == "(plan-fields)"
-    assert "2 of 3" in hit.text
+    assert "human-owned=1" in hit.text and "missing=2" in hit.text
+
+
+def test_typed_ownership_categories_are_independent_from_movement(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "- [ ] human @owner:github:andrei-shtanakov\n"
+        "- [ ] team @owner:github-team:example/platform\n"
+        "- [ ] repo @owner:repo:maestro\n"
+        "- [ ] unknown repo @owner:repo:ghost\n"
+        "- [ ] undecided @owner:TBD\n"
+        "- [ ] legacy role @owner:tech-lead\n"
+        '- [ ] missing but waiting @trigger:"release"\n',
+    )
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "human-owned=2" in hit.text
+    assert "repo-owned=1" in hit.text
+    assert "unknown-repo-owner=1" in hit.text
+    assert "TBD=1" in hit.text
+    assert "invalid-owner=1" in hit.text
+    assert "missing=1" in hit.text
+    assert "actionable=6" in hit.text and "waiting-by-trigger=1" in hit.text
+    assert "ACTION:" not in hit.text  # missing does not imply ready to move
 
 
 def test_unowned_items_are_broken_down_by_what_stands_in_their_way(
@@ -286,10 +313,10 @@ def test_unowned_items_are_broken_down_by_what_stands_in_their_way(
     )
     hit = fields_hit(config, "daily")
     assert hit is not None
-    assert "4 of 4" in hit.text
-    assert "2 actionable" in hit.text
-    assert "2 conditional" in hit.text
-    assert "malformed" not in hit.text  # empty groups stay silent
+    assert "missing=4" in hit.text
+    assert "actionable=2" in hit.text
+    assert "waiting-by-trigger=1" in hit.text
+    assert "waiting-by-blocker=1" in hit.text
 
 
 def test_tags_on_a_continuation_line_are_reported_as_malformed(tmp_path: Path) -> None:
@@ -305,8 +332,8 @@ def test_tags_on_a_continuation_line_are_reported_as_malformed(tmp_path: Path) -
     )
     hit = fields_hit(config, "daily")
     assert hit is not None
-    assert "1 actionable" in hit.text
-    assert "1 malformed" in hit.text
+    assert "actionable=2" in hit.text
+    assert "WARNING: 1 item(s) put field tags on continuation lines" in hit.text
     assert "continuation line" in hit.text
 
 
@@ -319,8 +346,8 @@ def test_a_prose_continuation_line_is_not_malformed(tmp_path: Path) -> None:
     )
     hit = fields_hit(config, "daily")
     assert hit is not None
-    assert "1 actionable" in hit.text
-    assert "malformed" not in hit.text
+    assert "actionable=1" in hit.text
+    assert "continuation lines" not in hit.text
 
 
 def test_a_closed_blocker_target_without_an_owner_is_warned_about(
@@ -343,8 +370,7 @@ def test_a_closed_blocker_target_without_an_owner_is_warned_about(
     )
     hit = fields_hit(config, "daily")
     assert hit is not None
-    assert "already closed" in hit.text
-    assert "react to the gate" in hit.text
+    assert "stale-condition=1" in hit.text
 
 
 def test_an_open_or_unresolvable_blocker_target_does_not_warn(tmp_path: Path) -> None:
@@ -358,15 +384,15 @@ def test_an_open_or_unresolvable_blocker_target_does_not_warn(tmp_path: Path) ->
     )
     hit = fields_hit(config, "daily")
     assert hit is not None
-    assert "already closed" not in hit.text
-    assert "2 conditional" in hit.text
+    assert "stale-condition=0" in hit.text
+    assert "waiting-by-blocker=2" in hit.text
 
 
-def test_a_fully_owned_plan_says_nothing(tmp_path: Path) -> None:
-    # Nothing to report is reported as nothing: a standing "0 unowned" line every run
-    # is the noise that makes real markers get skipped.
-    config = _config(tmp_path, "- [ ] mine @owner:andrei\n")
-    assert fields_hit(config, "daily") is None
+def test_a_fully_owned_plan_still_reports_movement(tmp_path: Path) -> None:
+    config = _config(tmp_path, "- [ ] mine @owner:github:andrei-shtanakov\n")
+    hit = fields_hit(config, "daily")
+    assert hit is not None
+    assert "human-owned=1" in hit.text and "actionable=1" in hit.text
     assert fields_hit(_config(tmp_path, "- [x] done\n"), "daily") is None
 
 
@@ -374,10 +400,10 @@ def test_unowned_count_carries_its_previous_value(tmp_path: Path) -> None:
     config = _config(tmp_path, "- [ ] alpha\n- [ ] beta\n")
     record(config, "daily", now=NOW)
     (tmp_path / "maestro" / "TODO.md").write_text(
-        "- [ ] alpha @owner:andrei\n- [ ] beta\n"
+        "- [ ] alpha @owner:github:andrei-shtanakov\n- [ ] beta\n"
     )
     hit = fields_hit(config, "daily")
-    assert "1 of 2" in hit.text and "was 2" in hit.text  # labelling progress is visible
+    assert "missing=1" in hit.text and "was missing=2" in hit.text
 
 
 def test_an_empty_snapshot_is_a_baseline_of_zero(tmp_path: Path) -> None:
@@ -387,7 +413,7 @@ def test_an_empty_snapshot_is_a_baseline_of_zero(tmp_path: Path) -> None:
     record(config, "daily", now=NOW)
     (tmp_path / "maestro" / "TODO.md").write_text("- [ ] new unowned work\n")
     hit = fields_hit(config, "daily")
-    assert "1 of 1" in hit.text and "was 0" in hit.text
+    assert "missing=1" in hit.text and "was missing=0" in hit.text
 
 
 def test_a_snapshot_from_before_owner_tracking_claims_no_movement(
@@ -402,7 +428,7 @@ def test_a_snapshot_from_before_owner_tracking_claims_no_movement(
         '{"text": "alpha", "first_seen": 1, "last_seen": 1}}}'
     )
     hit = fields_hit(config, "daily")
-    assert "1 of 1" in hit.text
+    assert "missing=1" in hit.text
     assert "was" not in hit.text
 
 

@@ -40,6 +40,7 @@
 - [x] Выкатить на VPS накопленное (#20–#24) и добавить `ROBIN_PLAN_EXEMPT=prograph-vault` в `.env`: без строки `prograph-vault` продолжил бы числиться пробелом покрытия. Сделано 2026-07-26, строка в `/srv/robin/robin.env`
 - [ ] Обновить докстринг `plan_state.py` @owner:andrei — шапка модуля всё ещё утверждает, что план-файлы полей не несут, хотя #27 их разбирает, а соседи уже проставили. Мелочь, но это первое, что читает следующая сессия @id:plan-state-docstring-refresh
 - [x] Разбивка unowned в отчёте полей: actionable / conditional (`@blocked_by`|`@trigger`) / malformed (теги на строке-продолжении, невидимы построчному парсеру) + предупреждение о пунктах, чей `@blocked_by`-таргет уже закрыт, а владельца реакции нет; свободнотекстовые `@trigger` машинно не проверяемы — для них достаточно счётчика. Запрос devtools, issue #37 (#38, merge 097e846) @owner:andrei @id:digest-unowned-breakdown
+- [x] Перевести отчёт полей на plan-fields v2: независимые ownership-категории (`human-owned` / `repo-owned` / `TBD` / `missing` / invalid) и movement-категории (`actionable` / trigger / blocker / stale / malformed), с отдельным сигналом `missing × actionable` @owner:github:andrei-shtanakov @id:typed-owner-movement-reporting
 
 ## Список зеркал
 

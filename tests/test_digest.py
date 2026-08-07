@@ -201,7 +201,7 @@ def test_both_digests_carry_the_labelling_gap(
     config = _repo_with_plan(tmp_path, items=4)
     _, sources, _ = compose(config, kind, now=NOW)
     fields = [hit for hit in sources if hit.path == "(plan-fields)"]
-    assert len(fields) == 1 and "4 of 4" in fields[0].text
+    assert len(fields) == 1 and "missing=4" in fields[0].text
 
 
 def _digest_env(tmp_path: Path, monkeypatch) -> Path:
