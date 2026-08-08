@@ -22,6 +22,7 @@ from . import fmt
 from .agent import _compose_answer  # same single LLM call site
 from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
+from .freshness import freshness_hit
 from .kb import Hit
 from .log import setup_logging
 from .plan_state import coverage_hit, delta_hit, fields_hit, open_items
@@ -69,6 +70,10 @@ _DIGEST_RULES = (
     "picture does NOT cover, once, in plain language. If the plan-fields source "
     "reports items nobody owns, give the count as a single plain sentence — it is a "
     "state of the plan, not a scolding, and never a per-item list. "
+    "If the '(arch-evidence-freshness)' source is present, give it one plain "
+    "sentence: SILENT, UNKNOWN or failed states must be reported as 'freshness "
+    "unknown / the watch did not confirm clean' — never softened into reassurance; "
+    "a clean state needs at most a brief mention. "
     "AUDIENCE RULE: the digest is read by a mixed team including non-engineers. "
     "Summarize remaining plan work thematically, in plain language grounded in the "
     "SOURCES — a few sentences per repo, not an item-by-item list. Internal shorthand "
@@ -226,6 +231,11 @@ def compose(
         sources.append(gap)
     if unlabelled := fields_hit(config, kind):
         sources.append(unlabelled)
+    # Second clock for steward's cron watch (issue #42): a scheduler cannot report
+    # its own silence, so every digest carries the last run's verdict — or an
+    # explicit "could not read", never a silent drop.
+    if freshness := freshness_hit(config, now=now):
+        sources.append(freshness)
     if kind in PLAN_SECTION_KINDS:
         sources += plan_hits(config, max_hits=config.plan_items_max)
     question = _DIGEST_QUESTION.format(kind=kind, period=period.label)

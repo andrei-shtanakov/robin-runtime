@@ -86,6 +86,7 @@
 
 ## Наблюдаемость и эксплуатация
 
+- [x] Читатель последнего run `arch-evidence-freshness` в steward: вердикт clean / non-clean / unknown («schedule молчит», порог 30 ч) строкой в оба дайджеста — независимые вторые часы для cron-вахты, которая не может сообщить о собственном молчании; сбой чтения — явный unknown, не тишина. Запрос steward#arch-evidence-freshness-schedule, issue #42 (#43) @owner:github:andrei-shtanakov @id:arch-freshness-run-reader
 - [ ] Решить судьбу `var/`-мусора при долгой работе: `interactions.jsonl`, `gaps.jsonl` и снапшоты планов растут без ротации @owner:github:andrei-shtanakov @trigger:"любой из файлов var/ > 50 МБ" @id:var-file-rotation
 
 ## Ждём соседей (не работа Robin, но от неё зависит форма обзоров)
