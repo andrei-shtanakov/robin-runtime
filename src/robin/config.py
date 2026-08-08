@@ -70,6 +70,12 @@ class RobinConfig:
     # if such a repo does carry a plan file, its items still reach the digest.
     plan_exempt: tuple[str, ...] = ()
 
+    # Independent reader of steward's arch-evidence-freshness cron workflow (issue
+    # #42): `owner/repo` whose last run each digest reads via the public GitHub API.
+    # Empty = reader off. The dataclass default is off so directly-constructed test
+    # configs never touch the network; load_config() turns it on.
+    freshness_repo: str = ""
+
     # slot 1: Telegram surface. Secrets env-only (slot 17); non-secrets kept here too so
     # every adapter reads one object.
     telegram_token: str | None = None
@@ -132,6 +138,9 @@ def load_config() -> RobinConfig:
             for name in os.environ.get("ROBIN_PLAN_EXEMPT", "").split(",")
             if name.strip()
         ),
+        freshness_repo=os.environ.get(
+            "ROBIN_FRESHNESS_REPO", "andrei-shtanakov/steward"
+        ).strip(),
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_channel=os.environ.get("ROBIN_TELEGRAM_CHANNEL") or None,
         maintainer_chat=os.environ.get("ROBIN_MAINTAINER_CHAT") or None,

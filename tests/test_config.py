@@ -28,6 +28,17 @@ def test_plan_exempt_parses_a_comma_separated_list(
     assert load_config().plan_exempt == ("prograph-vault", "discovery")
 
 
+def test_freshness_reader_is_on_by_default_and_env_disables_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Default-on: an opt-in watchdog that nobody enables watches nothing (issue #42).
+    assert load_config().freshness_repo == "andrei-shtanakov/steward"
+    monkeypatch.setenv("ROBIN_FRESHNESS_REPO", " ")
+    assert load_config().freshness_repo == ""
+    monkeypatch.setenv("ROBIN_FRESHNESS_REPO", "org/other-watch")
+    assert load_config().freshness_repo == "org/other-watch"
+
+
 def test_mirror_list_matches_the_deploy_script() -> None:
     """The list Robin reads and the list the VPS clones must name the same repos.
 

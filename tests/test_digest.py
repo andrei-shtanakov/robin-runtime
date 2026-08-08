@@ -209,6 +209,9 @@ def _digest_env(tmp_path: Path, monkeypatch) -> Path:
     _capture_sources(monkeypatch)
     monkeypatch.setenv("ROBIN_VAULT", str(tmp_path / "vault"))
     monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
+    # load_config() enables the arch-evidence-freshness reader by default — a test
+    # must never reach the real GitHub API (see test_freshness for the reader itself).
+    monkeypatch.setenv("ROBIN_FRESHNESS_REPO", "")
     (tmp_path / "vault").mkdir(exist_ok=True)
     # A canonical mirror name, i.e. one load_config() discovers. Spelling it `Maestro`
     # here passed on a case-insensitive filesystem and failed only on Linux CI — the
