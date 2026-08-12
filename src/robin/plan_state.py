@@ -244,6 +244,13 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
             "source, in either cadence, and that silence is not evidence that "
             "they have nothing left to do."
         )
+    elif not expected:
+        # Exempting every visible mirror leaves nothing the marker vouches for;
+        # "0/0" would read like a divide-by-zero rather than the alarm it is.
+        text = (
+            "plan coverage: no required mirrors remain — every visible mirror "
+            "is exempt, so this digest vouches for no plan at all."
+        )
     else:
         text = f"plan coverage: {covered}/{len(expected)} required mirrors."
     if applied:

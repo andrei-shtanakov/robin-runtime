@@ -201,6 +201,21 @@ def test_unresolved_mirror_names_are_disclosed(tmp_path: Path) -> None:
     assert "absent from this digest entirely" in hit.text
 
 
+def test_everything_exempt_reads_as_an_alarm_not_zero_over_zero(
+    tmp_path: Path,
+) -> None:
+    # "0/0 required mirrors" reads like a divide-by-zero; a registry that
+    # exempts every visible mirror deserves an explicit alarm (Copilot, PR #45).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    config = replace(config, plan_exempt=("vault", "maestro"))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "0/0" not in hit.text
+    assert "every visible mirror is exempt" in hit.text
+    assert "not counted: vault, maestro" in hit.text
+
+
 def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
     # An all-checked plan file is a maintained plan that happens to be empty, not a
     # missing one — arbiter's April snapshot is the live example.
