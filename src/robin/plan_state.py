@@ -205,7 +205,7 @@ def open_items(config: RobinConfig) -> list[PlanItem]:
 
 
 def coverage_hit(config: RobinConfig) -> Hit | None:
-    """Which mirrors have a plan file at all — None when every one of them does.
+    """Which mirrors have a plan file at all — silent only with nothing to say.
 
     A repo without a plan file contributes nothing to the "what remains" section and
     used to do so silently, which made a partial forward-look read as an ecosystem-wide
@@ -213,10 +213,16 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     open, and 56 of the 62 items came from two. An all-checked plan file counts as
     covered — that is a maintained plan that happens to be empty, not a missing one.
 
-    Mirrors in `config.plan_exempt` are not expected to keep a plan (a knowledge base
-    is not a project with work), so they leave the denominator instead of being
-    reported as a gap every run — but the exemption is stated, because shrinking the
-    denominator in silence is the failure this marker exists to catch."""
+    Mirrors in `config.plan_exempt` are not expected to keep a plan, so they leave
+    the denominator instead of being reported as a gap every run — but applied and
+    unknown exemptions are ALWAYS disclosed, including at full coverage: an applied
+    exemption that vanished from the digest whenever nothing was missing made the
+    honesty marker hide the very denominator shrink it exists to state (PP-101
+    stage 6, owner ruling 2026-08-12). Mirror names that did not resolve to a
+    directory are disclosed for the same reason: they are absent from the digest
+    entirely, and that silence used to be invisible (maestro/libretto, 2026-07).
+    None means there is genuinely nothing to disclose: full coverage, no
+    exemptions in effect, every configured name resolved."""
     mirrors = [config.vault_path, *config.repo_paths]
     names = {root.name for root in mirrors}
     # Only exemptions that actually matched may be claimed as applied: echoing a typo
@@ -226,26 +232,38 @@ def coverage_hit(config: RobinConfig) -> Hit | None:
     unknown = [name for name in config.plan_exempt if name not in names]
     expected = [root for root in mirrors if root.name not in applied]
     missing = [root.name for root in expected if next(_plan_files(root), None) is None]
-    if not missing:
+    unresolved = list(config.missing_mirrors)
+    if not (missing or applied or unknown or unresolved):
         return None
-    exempted = (
-        f" Exempt by configuration, not counted: {', '.join(applied)}."
-        if applied
-        else ""
-    )
+    covered = len(expected) - len(missing)
+    if missing:
+        text = (
+            f"plan coverage: {covered}/{len(expected)} required mirrors; no plan "
+            f"file in: {', '.join(missing)}. Remaining work in those repos is "
+            "INVISIBLE to this digest — they contribute nothing to any plan "
+            "source, in either cadence, and that silence is not evidence that "
+            "they have nothing left to do."
+        )
+    else:
+        text = f"plan coverage: {covered}/{len(expected)} required mirrors."
+    if applied:
+        kept = (
+            "Its plan, when present, remains included."
+            if len(applied) == 1
+            else "Their plans, when present, remain included."
+        )
+        text += f" Exempt by configuration, not counted: {', '.join(applied)}. {kept}"
     if unknown:
-        exempted += (
+        text += (
             f" Configured exemptions matching no mirror, ignored: {', '.join(unknown)}."
         )
-    return Hit(
-        "(plan-coverage)",
-        1,
-        f"plan files exist in {len(expected) - len(missing)} of {len(expected)} "
-        f"mirrors; no plan file in: {', '.join(missing)}. Remaining work in those "
-        "repos is INVISIBLE to this digest — they contribute nothing to any plan "
-        "source, in either cadence, and that silence is not evidence that they have "
-        f"nothing left to do.{exempted}",
-    )
+    if unresolved:
+        text += (
+            " Mirror names not resolved on disk, absent from this digest "
+            f"entirely: {', '.join(unresolved)} — check the mirror list and the "
+            "clones."
+        )
+    return Hit("(plan-coverage)", 1, text)
 
 
 def _fleet_view(
