@@ -38,6 +38,10 @@ _ECOSYSTEM_REPOS = (
     "libretto",
     "research-bench",
     "github-checker",
+    # product-governance contracts + validator (Idea -> RankedBacklog ->
+    # ProductProposal -> human gates); registered at bootstrap 2026-08-12 so the
+    # digest is not silently blind to a new repo (the maestro/libretto lesson).
+    "impresario",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
     # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
     # the VPS mirror layout that is a separate read-only clone (the runtime checkout
