@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from robin.config import _ECOSYSTEM_REPOS, load_config
+from robin.config import _ECOSYSTEM_REPOS, _PLAN_EXEMPT, load_config
 
 
 @pytest.fixture(autouse=True)
@@ -17,15 +17,30 @@ def _isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
 
 
-def test_plan_exempt_defaults_to_empty() -> None:
+def test_plan_exempt_is_the_canonical_in_repo_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PP-101 stage 6 (owner ruling 2026-08-12): the registry lives in code
+    # (_PLAN_EXEMPT, empty today) so two installations cannot disagree about
+    # governance coverage; a stale ROBIN_PLAN_EXEMPT in someone's .env is
+    # ignored rather than silently forking the canon.
+    assert load_config().plan_exempt == _PLAN_EXEMPT == ()
+    monkeypatch.setenv("ROBIN_PLAN_EXEMPT", "prograph-vault")
     assert load_config().plan_exempt == ()
 
 
-def test_plan_exempt_parses_a_comma_separated_list(
-    monkeypatch: pytest.MonkeyPatch,
+def test_unresolved_mirror_names_are_reported_not_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ROBIN_PLAN_EXEMPT", " prograph-vault , discovery ,, ")
-    assert load_config().plan_exempt == ("prograph-vault", "discovery")
+    # load_config used to filter unresolved names via .is_dir() silently; they
+    # are now carried on the config so coverage can disclose them (PP-101).
+    vault = tmp_path / "prograph-vault"
+    vault.mkdir()
+    (tmp_path / "maestro").mkdir()
+    monkeypatch.setenv("ROBIN_VAULT", str(vault))
+    config = load_config()
+    assert [p.name for p in config.repo_paths] == ["maestro"]
+    assert set(config.missing_mirrors) == set(_ECOSYSTEM_REPOS) - {"maestro"}
 
 
 def test_freshness_reader_is_on_by_default_and_env_disables_it(

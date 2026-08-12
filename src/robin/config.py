@@ -49,6 +49,17 @@ _ECOSYSTEM_REPOS = (
     "robin-runtime",
 )
 
+# Canonical plan-exemption registry (PP-101 stage 6, owner ruling 2026-08-12).
+# Lives in code next to _ECOSYSTEM_REPOS so every Robin installation reads the
+# same governance coverage — the env-only ROBIN_PLAN_EXEMPT let two deployments
+# disagree about it silently and is gone. Empty today on purpose: prograph-vault
+# was exempted 2026-07-26 and un-exempted 2026-07-30, because its plan file is
+# the acceptance surface for cross-repo obligations (ADR-ECO-006) — its
+# disappearance must raise a normal coverage warning, not vanish from the
+# denominator. Adding the first entry requires a repo decision with a recorded
+# motivation and tests, not a config tweak.
+_PLAN_EXEMPT: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
 class RobinConfig:
@@ -67,12 +78,20 @@ class RobinConfig:
     # open-item count (62 across 12 repos on 2026-07-26) so the "plan picture is
     # incomplete" disclaimer reflects a genuine overflow, not a too-tight budget.
     plan_items_max: int = 80
-    # Mirrors (by directory name) that are not expected to keep a plan file — a
-    # knowledge base is not a project with work. They leave the coverage denominator
-    # instead of being reported as a gap every run; the digest still says they were
-    # exempted. Exempt means "not expected to keep one", not "ignore the one it has":
-    # if such a repo does carry a plan file, its items still reach the digest.
+    # Mirrors (by directory name) that are not expected to keep a plan file. They
+    # leave the coverage denominator instead of being reported as a gap every run;
+    # applied and unknown exemptions are ALWAYS disclosed in the digest, including
+    # at full coverage. Exempt means "not expected to keep one", not "ignore the
+    # one it has": if such a repo does carry a plan file, its items still reach
+    # the digest. The canonical registry is _PLAN_EXEMPT (in-repo, not env);
+    # the dataclass default stays neutral for directly-constructed test configs,
+    # load_config() applies the canon — same pattern as freshness_repo below.
     plan_exempt: tuple[str, ...] = ()
+    # Mirror names from _ECOSYSTEM_REPOS that did not resolve to a directory. A
+    # name that stopped resolving used to vanish from the digest silently (the
+    # maestro/libretto blindness, 2026-07); coverage now reports these loudly
+    # (PP-101 stage 6: fail-loud on unresolved names).
+    missing_mirrors: tuple[str, ...] = ()
 
     # Independent reader of steward's arch-evidence-freshness cron workflow
     # (issue #42): `owner/repo` whose last run each digest reads via the public
@@ -121,6 +140,7 @@ def load_config() -> RobinConfig:
     vault = Path(os.environ.get("ROBIN_VAULT", str(_DEFAULT_VAULT))).resolve()
     base = vault.parent
     repos = [base / name for name in _ECOSYSTEM_REPOS if (base / name).is_dir()]
+    missing = tuple(name for name in _ECOSYSTEM_REPOS if not (base / name).is_dir())
     users = tuple(
         u.strip()
         for u in os.environ.get("ROBIN_ALLOWED_DM", "").split(",")
@@ -137,11 +157,8 @@ def load_config() -> RobinConfig:
         tz=os.environ.get("ROBIN_TZ", "UTC"),
         digest_grace_hours=int(os.environ.get("ROBIN_DIGEST_GRACE_HOURS", "6")),
         plan_items_max=int(os.environ.get("ROBIN_PLAN_ITEMS_MAX", "80")),
-        plan_exempt=tuple(
-            name.strip()
-            for name in os.environ.get("ROBIN_PLAN_EXEMPT", "").split(",")
-            if name.strip()
-        ),
+        plan_exempt=_PLAN_EXEMPT,
+        missing_mirrors=missing,
         freshness_repo=os.environ.get(
             "ROBIN_FRESHNESS_REPO", "andrei-shtanakov/steward"
         ).strip(),

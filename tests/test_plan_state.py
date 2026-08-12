@@ -59,7 +59,7 @@ def test_coverage_names_mirrors_without_a_plan_file(tmp_path: Path) -> None:
     )
     hit = coverage_hit(config)
     assert hit is not None and hit.path == "(plan-coverage)"
-    assert "1 of 3" in hit.text
+    assert "1/3 required mirrors" in hit.text
     assert "deployer" in hit.text and "vault" in hit.text
     assert "maestro" not in hit.text  # the covered repo is not in the gap list
 
@@ -111,9 +111,15 @@ def test_exempt_mirrors_leave_the_coverage_expectation(tmp_path: Path) -> None:
     vault.mkdir()
     exempt = replace(config, plan_exempt=("vault",))
     assert coverage_hit(config) is not None  # without the exemption it is a gap
-    assert (
-        coverage_hit(exempt) is None
-    )  # every mirror that is expected to have one does
+    hit = coverage_hit(exempt)
+    # Every mirror that is expected to have a plan does — but the applied
+    # exemption is still disclosed instead of vanishing with the gap list
+    # (PP-101 stage 6: permanent disclosure).
+    assert hit is not None
+    assert "1/1 required mirrors" in hit.text
+    assert "no plan file" not in hit.text
+    assert "not counted: vault" in hit.text
+    assert "remains included" in hit.text
 
 
 def test_exemptions_are_disclosed_not_silent(tmp_path: Path) -> None:
@@ -129,7 +135,7 @@ def test_exemptions_are_disclosed_not_silent(tmp_path: Path) -> None:
     )
     hit = coverage_hit(config)
     assert hit is not None
-    assert "1 of 2" in hit.text  # the exempt mirror left the denominator
+    assert "1/2 required mirrors" in hit.text  # the exempt mirror left the denominator
     assert "deployer" in hit.text
     # ...and it is said out loud rather than dropping out of the count in silence
     assert "vault" in hit.text and "exempt" in hit.text.lower()
@@ -144,7 +150,7 @@ def test_an_exemption_matching_no_mirror_is_reported_as_ignored(tmp_path: Path) 
     hit = coverage_hit(config)
     assert hit is not None
     assert "vault" in hit.text  # the real mirror is still counted as a gap
-    assert "1 of 2" in hit.text  # ...and still in the denominator
+    assert "1/2 required mirrors" in hit.text  # ...and still in the denominator
     assert "vualt" in hit.text and "ignored" in hit.text.lower()
     assert "not counted: vualt" not in hit.text  # never claimed as applied
 
@@ -155,6 +161,59 @@ def test_exemption_does_not_hide_items_a_repo_does_have(tmp_path: Path) -> None:
     config = _config(tmp_path, "- [ ] alpha\n")
     config = replace(config, plan_exempt=("maestro",))
     assert [item.text for item in open_items(config)] == ["alpha"]
+
+
+def test_full_coverage_with_no_exemptions_stays_silent(tmp_path: Path) -> None:
+    # None must keep meaning "genuinely nothing to disclose", or the marker
+    # becomes daily noise instead of an honesty signal.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").write_text("- [ ] vault work\n")
+    assert coverage_hit(config) is None
+
+
+def test_unknown_exemption_is_disclosed_even_at_full_coverage(
+    tmp_path: Path,
+) -> None:
+    # A typo in the registry used to be visible only while something else was
+    # missing — the misconfiguration hid exactly when everything looked fine.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").write_text("- [ ] vault work\n")
+    config = replace(config, plan_exempt=("vualt",))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "2/2 required mirrors" in hit.text
+    assert "vualt" in hit.text and "ignored" in hit.text.lower()
+
+
+def test_unresolved_mirror_names_are_disclosed(tmp_path: Path) -> None:
+    # A list entry that stopped resolving used to vanish from the digest
+    # silently (maestro/libretto, 2026-07). PP-101 stage 6: fail loud.
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    (tmp_path / "vault" / "TODO.md").write_text("- [ ] vault work\n")
+    config = replace(config, missing_mirrors=("impresario", "deployer"))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "not resolved on disk" in hit.text
+    assert "impresario" in hit.text and "deployer" in hit.text
+    assert "absent from this digest entirely" in hit.text
+
+
+def test_everything_exempt_reads_as_an_alarm_not_zero_over_zero(
+    tmp_path: Path,
+) -> None:
+    # "0/0 required mirrors" reads like a divide-by-zero; a registry that
+    # exempts every visible mirror deserves an explicit alarm (Copilot, PR #45).
+    config = _config(tmp_path, "- [ ] alpha\n")
+    (tmp_path / "vault").mkdir()
+    config = replace(config, plan_exempt=("vault", "maestro"))
+    hit = coverage_hit(config)
+    assert hit is not None
+    assert "0/0" not in hit.text
+    assert "every visible mirror is exempt" in hit.text
+    assert "not counted: vault, maestro" in hit.text
 
 
 def test_a_plan_file_with_nothing_open_still_counts_as_covered(tmp_path: Path) -> None:
