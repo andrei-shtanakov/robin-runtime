@@ -42,6 +42,13 @@ _ECOSYSTEM_REPOS = (
     # ProductProposal -> human gates); registered at bootstrap 2026-08-12 so the
     # digest is not silently blind to a new repo (the maestro/libretto lesson).
     "impresario",
+    # Battle-testing stages of the spec-runner/Maestro contour, moved under the
+    # umbrella and onboarded to the fleet 2026-08-17 (workspace-manifest PR #14):
+    # kapelle (Elixir consumer of vendored impresario contracts, stage 1) and
+    # disputatio (debate-loop orchestrator, stage 2). Registered the same day so
+    # the digest is not silently blind to them (the maestro/libretto lesson).
+    "disputatio",
+    "kapelle",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
     # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
     # the VPS mirror layout that is a separate read-only clone (the runtime checkout
