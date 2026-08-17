@@ -16,7 +16,7 @@ GIT_BASE="${GIT_BASE:?set GIT_BASE, e.g. git@github.com:your-org}"
 # name works (GitHub redirects) but recreates the dead directory name, which is how
 # mirrors/open-prose came back on 2026-07-16 — after the rename. Keep in sync with
 # _ECOSYSTEM_REPOS in src/robin/config.py; tests/test_config.py asserts the two match.
-REPOS=(prograph-vault atp-platform maestro arbiter spec-runner spec-runner-vscode deployer dispatcher steward proctor prograph discovery libretto research-bench github-checker impresario robin-runtime)
+REPOS=(prograph-vault atp-platform maestro arbiter spec-runner spec-runner-vscode deployer dispatcher steward proctor prograph discovery libretto research-bench github-checker impresario disputatio kapelle robin-runtime)
 
 echo "== packages =="
 apt-get update -q
