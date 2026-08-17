@@ -18,6 +18,7 @@ from robin.plan_state import (
     fields_hit,
     open_items,
     record,
+    unblocked_hit,
 )
 
 NOW = datetime(2026, 7, 26, 9, 0, tzinfo=timezone.utc)
@@ -614,6 +615,164 @@ def test_structurally_invalid_snapshot_degrades_to_first_run(
     hit = delta_hit(config, "daily", now=NOW)
     assert "no previous snapshot" in hit.text
     record(config, "daily", now=NOW)  # and recording over it must not crash either
+
+
+_GATE_OPEN = (
+    "- [ ] ship the gate @id:gate\n"
+    "- [ ] react to the gate @id:react @blocked_by:todo://maestro/gate\n"
+)
+_GATE_CLOSED = (
+    "- [x] ship the gate @id:gate\n"
+    "- [ ] react to the gate @id:react @blocked_by:todo://maestro/gate\n"
+)
+
+
+def test_record_persists_movement_and_blocker(tmp_path: Path) -> None:
+    # The unblocked-since section is a transition between snapshots, so the
+    # snapshot must carry each item's movement bucket and its blocker
+    # (the storage half of @id:snapshot-blocker-trigger-fields).
+    config = _config(tmp_path, _GATE_OPEN)
+    record(config, "daily", now=NOW)
+    items = json.loads((config.var_dir / "plan-state-daily.json").read_text())["items"]
+    by_text = {entry["text"]: entry for entry in items.values()}
+    assert by_text["ship the gate"]["movement"] == "actionable"
+    assert by_text["ship the gate"]["blocked_by"] is None  # key present even when unset
+    assert by_text["react to the gate"]["movement"] == "waiting-by-blocker"
+    assert by_text["react to the gate"]["blocked_by"] == "todo://maestro/gate"
+
+
+def test_unblocked_names_items_whose_blocker_closed_since_the_baseline(
+    tmp_path: Path,
+) -> None:
+    # The section is the daily human read of PF-BLOCKER-STALE (issue #47): the
+    # morning after a blocker closes, the waiting item must appear by name.
+    config = _config(tmp_path, _GATE_OPEN)
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(_GATE_CLOSED)
+    hit = unblocked_hit(config, "daily")
+    assert hit is not None and hit.path == "(plan-unblocked)"
+    assert "react to the gate" in hit.text
+    assert "todo://maestro/gate" in hit.text  # the delivered blocker is named
+    # Delivered-and-awaiting-action, never "everything that got unblocked":
+    # a wait the author already reacted to needs no alarm.
+    assert "awaits action" in hit.text
+
+
+def test_unblocked_is_silent_when_nothing_transitioned(tmp_path: Path) -> None:
+    # A comparison that ran and found nothing may drop the section entirely
+    # (issue #47 allows absent-when-empty); only an unavailable verdict may not.
+    config = _config(tmp_path, _GATE_OPEN)
+    record(config, "daily", now=NOW)
+    assert unblocked_hit(config, "daily") is None
+
+
+def test_an_item_born_with_a_delivered_blocker_is_not_unblocked_since(
+    tmp_path: Path,
+) -> None:
+    # "Unblocked since yesterday" is a transition: an item that first appeared
+    # already waiting on a closed target did not get unblocked in this window —
+    # it stays in the standing stale-condition counter (plan-fields) instead.
+    config = _config(tmp_path, "- [x] ship the gate @id:gate\n")
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(_GATE_CLOSED)
+    assert unblocked_hit(config, "daily") is None
+
+
+def test_a_wait_already_acted_on_is_not_reported_as_unblocked(tmp_path: Path) -> None:
+    # Deliberate narrowing, pinned: the section is an alarm for the UNNOTICED
+    # delivery. If the author already reacted before the digest — dropped the
+    # @blocked_by tag or closed the item — the wait was handled and needs no bell.
+    config = _config(tmp_path, _GATE_OPEN)
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [x] ship the gate @id:gate\n- [ ] react to the gate @id:react\n"
+    )
+    assert unblocked_hit(config, "daily") is None  # tag removed: now actionable
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [x] ship the gate @id:gate\n- [x] react to the gate @id:react\n"
+    )
+    assert unblocked_hit(config, "daily") is None  # item closed: wait is gone
+
+
+def test_unblocked_without_a_baseline_is_an_explicit_unknown(tmp_path: Path) -> None:
+    # Negative-evidence rule (issue #47): with items waiting on a delivered
+    # blocker and no snapshot to compare against, the section must say UNKNOWN
+    # out loud — a missing baseline is never "nothing was unblocked".
+    config = _config(tmp_path, _GATE_CLOSED)
+    hit = unblocked_hit(config, "daily")
+    assert hit is not None and hit.path == "(plan-unblocked)"
+    assert "UNKNOWN" in hit.text
+    assert "no previous snapshot" in hit.text
+    # A missing file must not be blamed on the snapshot format (Copilot, PR #49)
+    assert "movement" not in hit.text
+
+
+def test_a_snapshot_from_before_movement_tracking_is_an_explicit_unknown(
+    tmp_path: Path,
+) -> None:
+    # An old-format snapshot (entries without a movement bucket) is a distinct
+    # path from a missing file, and equally unable to answer "since when?".
+    config = _config(tmp_path, _GATE_CLOSED)
+    config.var_dir.mkdir(parents=True, exist_ok=True)
+    (config.var_dir / "plan-state-daily.json").write_text(
+        '{"version": 1, "updated": 1, "items": {"maestro/TODO.md::react to the gate": '
+        '{"text": "react to the gate", "owner": null, "first_seen": 1, "last_seen": 1}'
+        "}}"
+    )
+    hit = unblocked_hit(config, "daily")
+    assert hit is not None and "UNKNOWN" in hit.text
+    assert "does not track movement" in hit.text
+    assert "no previous snapshot" not in hit.text  # the file IS there
+
+
+def test_a_retargeted_wait_is_not_reported_as_unblocked(tmp_path: Path) -> None:
+    # Retargeting @blocked_by to an already-closed target between snapshots is a
+    # wait born stale, not a delivery: the item never sat overnight waiting on
+    # that target, so the bell must stay silent (Copilot, PR #49).
+    config = _config(
+        tmp_path,
+        "- [ ] ship the gate @id:gate\n"
+        "- [x] other thing @id:other\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://maestro/gate\n",
+    )
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [ ] ship the gate @id:gate\n"
+        "- [x] other thing @id:other\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://maestro/other\n"
+    )
+    assert unblocked_hit(config, "daily") is None
+
+
+def test_a_legacy_slug_blocker_transition_is_reported(tmp_path: Path) -> None:
+    # The fleet still lives mostly on un-@id'd `<repo>#<slug>` refs; a delivered
+    # legacy blocker must ring the same bell the canonical graph rings.
+    config = _config(tmp_path, "- [ ] ship the gate @id:gate\n")
+    arbiter = tmp_path / "arbiter"
+    arbiter.mkdir()
+    (arbiter / "TODO.md").write_text("- [ ] react @blocked_by:Maestro#gate\n")
+    config = RobinConfig(
+        vault_path=tmp_path / "vault",
+        repo_paths=[tmp_path / "maestro", arbiter],
+        var_dir=tmp_path / "var",
+    )
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text("- [x] ship the gate @id:gate\n")
+    hit = unblocked_hit(config, "daily")
+    assert hit is not None and "react" in hit.text
+
+
+def test_unblocked_findings_disclose_the_issue_form_blind_spot(tmp_path: Path) -> None:
+    # No-silent-caps: the sensor resolves todo-item refs, not GitHub issue STATE,
+    # so an issue-form wait can be delivered without ever appearing here (until
+    # devtools blocker-issue-state-resolution). The section must say so rather
+    # than let its silence read as "no issue wait was delivered".
+    config = _config(tmp_path, _GATE_OPEN)
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(_GATE_CLOSED)
+    hit = unblocked_hit(config, "daily")
+    assert hit is not None
+    assert "issue-form" in hit.text and "partial" in hit.text
 
 
 def test_record_carries_first_seen_across_runs(tmp_path: Path) -> None:

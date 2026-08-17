@@ -443,6 +443,8 @@ def record(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pa
     that saw it rather than from the last run."""
     stamp = int(now.timestamp()) if now else int(time.time())
     previous = load_state(config, kind) or {}
+    current, sources = _scan_plans(config)
+    _index, codes = _fleet_view(config, sources)
     items = {
         item.key: {
             "repo": item.repo,
@@ -451,10 +453,16 @@ def record(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pa
             # Always written, None included: the presence of the key is how a later
             # run knows this snapshot tracked owners and can be compared against.
             "owner": item.owner,
+            # Same contract for the unblocked-since comparison (issue #47): the
+            # movement bucket and the blocker edge as of this baseline.
+            "movement": _movement_bucket(
+                item, codes.get((item.repo.lower(), item.path, item.line), set())
+            ),
+            "blocked_by": item.blocked_by,
             "first_seen": previous.get(item.key, {}).get("first_seen", stamp),
             "last_seen": stamp,
         }
-        for item in open_items(config)
+        for item in current
     }
     config.var_dir.mkdir(parents=True, exist_ok=True)
     path = _state_path(config, kind)
@@ -528,3 +536,81 @@ def delta_hit(
             f"{STALE_AFTER_DAYS} days: {_summarize(oldest)}"
         )
     return Hit("(plan-delta)", 1, ". ".join(parts) + ".")
+
+
+def _stale_blocker_items(config: RobinConfig) -> list[PlanItem]:
+    """Open items currently waiting on a delivered (closed) blocker target."""
+    items, sources = _scan_plans(config)
+    if not items:
+        return []
+    _index, codes = _fleet_view(config, sources)
+    return [
+        item
+        for item in items
+        if item.blocked_by
+        and _movement_bucket(
+            item, codes.get((item.repo.lower(), item.path, item.line), set())
+        )
+        == "stale-condition"
+    ]
+
+
+def unblocked_hit(config: RobinConfig, kind: str) -> Hit | None:
+    """Items unblocked since this cadence's previous digest (issue #47).
+
+    "Unblocked" is a transition between snapshots: the item waited on its blocker
+    at the previous digest and the target is closed now. Deliberately narrow — a
+    wait the author already reacted to (tag dropped, item closed) raises no alarm,
+    and an item born with an already-delivered blocker is standing stale, not news;
+    both stay visible through the plan-fields stale-condition counter instead.
+
+    Known blind spot (no-silent-caps): the sensor resolves todo-item refs, not
+    GitHub issue STATE, so an issue-form `<repo>#<number>` wait whose issue closed
+    is only covered once devtools `blocker-issue-state-resolution` lands. The
+    findings text says so; silence here is not evidence for issue-form waits.
+
+    None only when the comparison ran and found nothing to report; an unusable
+    baseline with candidates present is an explicit UNKNOWN, never a silent drop."""
+    stale_now = _stale_blocker_items(config)
+    if not stale_now:
+        return None
+    previous = load_state(config, kind)
+    if previous is None or not all("movement" in entry for entry in previous.values()):
+        # Two distinct roads to the same honest answer: no snapshot at all
+        # (first run, unreadable file) vs a snapshot from before movement
+        # tracking. Blaming a missing file on its format would mislead the
+        # reader about what actually failed (Copilot, PR #49).
+        reason = (
+            f"there is no previous snapshot for the {kind} cadence"
+            if previous is None
+            else f"the previous {kind} snapshot does not track movement"
+        )
+        return Hit(
+            "(plan-unblocked)",
+            1,
+            f"{len(stale_now)} open plan item(s) currently wait on a blocker whose "
+            f"target is already closed, but {reason} — which of them became "
+            "unblocked since the previous digest is UNKNOWN. This is a missing "
+            "comparison baseline, never evidence that nothing was unblocked.",
+        )
+    newly = [
+        item
+        for item in stale_now
+        # The same blocker, waiting then and delivered now: a wait retargeted to
+        # an already-closed target between snapshots never sat overnight — it is
+        # born stale, not delivered (Copilot, PR #49).
+        if previous.get(item.key, {}).get("movement") == "waiting-by-blocker"
+        and previous.get(item.key, {}).get("blocked_by") == item.blocked_by
+    ]
+    if not newly:
+        return None
+    named = [f"{item.text} (was blocked by {item.blocked_by})" for item in newly]
+    return Hit(
+        "(plan-unblocked)",
+        1,
+        f"{len(newly)} plan item(s) became unblocked since the previous {kind} "
+        f"digest — the blocker target closed and the item still awaits action: "
+        f"{_summarize(named)}. Coverage is partial for issue-form "
+        "(<repo>#<number>) blockers: their issue state is not resolved by the "
+        "sensor yet, so absence from this list says nothing about them.",
+    )

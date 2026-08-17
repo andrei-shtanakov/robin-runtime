@@ -25,7 +25,7 @@ from .config import RobinConfig, load_config
 from .freshness import freshness_hit
 from .kb import Hit
 from .log import setup_logging
-from .plan_state import coverage_hit, delta_hit, fields_hit, open_items
+from .plan_state import coverage_hit, delta_hit, fields_hit, open_items, unblocked_hit
 from .plan_state import record as record_plan_state
 
 logger = logging.getLogger("robin.digest")
@@ -41,7 +41,9 @@ _DIGEST_QUESTION = (
     "near-duplicate commits; repos with no visible activity get one short collective "
     "line); 2) how the plan MOVED since the previous digest — how many items opened "
     "and closed and which ones, plus anything open unusually long — from the "
-    "'(plan-delta)' source, omitted if that source is absent; 3) what remains NOT done "
+    "'(plan-delta)' source, omitted if that source is absent; 2b) items whose blocker "
+    "was DELIVERED and that now await action — from the '(plan-unblocked)' source, "
+    "omitted if that source is absent; 3) what remains NOT done "
     "against the plan — only if open plan items appear in the SOURCES, otherwise omit "
     "the section; 4) unresolved questions the changes raise. Be concise."
 )
@@ -70,6 +72,12 @@ _DIGEST_RULES = (
     "picture does NOT cover, once, in plain language. If the plan-fields source "
     "reports items nobody owns, give the count as a single plain sentence — it is a "
     "state of the plan, not a scolding, and never a per-item list. "
+    "If the '(plan-unblocked)' source is present, give it its own short section: "
+    "these are waits whose blocker was DELIVERED and that still await action — "
+    "present them as a wake-up call, not as a list of everything that got "
+    "unblocked. If that source says the baseline is missing or UNKNOWN, report "
+    "the comparison as unavailable — never as 'nothing was unblocked'. Keep its "
+    "coverage caveat: issue-form blockers are only partially covered. "
     "If the '(arch-evidence-freshness)' source is present, give it one plain "
     "sentence: SILENT, UNKNOWN or failed states must be reported as 'freshness "
     "unknown / the watch did not confirm clean' — never softened into reassurance; "
@@ -227,6 +235,10 @@ def compose(
     ]
     if movement := delta_hit(config, kind, now=now):
         sources.append(movement)
+    # The daily human read of a delivered blocker (issue #47): the red scheduled
+    # run is machine evidence, the digest is where a person actually sees it.
+    if unblocked := unblocked_hit(config, kind):
+        sources.append(unblocked)
     if gap := coverage_hit(config):
         sources.append(gap)
     if unlabelled := fields_hit(config, kind):

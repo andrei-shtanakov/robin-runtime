@@ -20,6 +20,7 @@ from robin.digest import (
     window,
 )
 from robin.liveness import stale_kinds
+from robin.plan_state import record as record_plan_state
 
 NOW = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
 
@@ -202,6 +203,32 @@ def test_both_digests_carry_the_labelling_gap(
     _, sources, _ = compose(config, kind, now=NOW)
     fields = [hit for hit in sources if hit.path == "(plan-fields)"]
     assert len(fields) == 1 and "missing=4" in fields[0].text
+
+
+@pytest.mark.parametrize("kind", ["daily", "weekly"])
+def test_both_digests_carry_the_unblocked_section_source(
+    tmp_path: Path, monkeypatch, kind: str
+) -> None:
+    # The unblocked-since section (issue #47) is the daily human read of a
+    # delivered blocker; both cadences compare against their own baseline.
+    _capture_sources(monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "TODO.md").write_text(
+        "- [ ] ship the gate @id:gate\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://repo/gate\n"
+    )
+    config = RobinConfig(
+        vault_path=tmp_path / "vault", repo_paths=[repo], var_dir=tmp_path / "var"
+    )
+    record_plan_state(config, kind, now=NOW)
+    (repo / "TODO.md").write_text(
+        "- [x] ship the gate @id:gate\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://repo/gate\n"
+    )
+    _, sources, _ = compose(config, kind, now=NOW)
+    unblocked = [hit for hit in sources if hit.path == "(plan-unblocked)"]
+    assert len(unblocked) == 1 and "react to the gate" in unblocked[0].text
 
 
 def _digest_env(tmp_path: Path, monkeypatch) -> Path:
