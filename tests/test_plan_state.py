@@ -702,6 +702,9 @@ def test_unblocked_without_a_baseline_is_an_explicit_unknown(tmp_path: Path) -> 
     hit = unblocked_hit(config, "daily")
     assert hit is not None and hit.path == "(plan-unblocked)"
     assert "UNKNOWN" in hit.text
+    assert "no previous snapshot" in hit.text
+    # A missing file must not be blamed on the snapshot format (Copilot, PR #49)
+    assert "movement" not in hit.text
 
 
 def test_a_snapshot_from_before_movement_tracking_is_an_explicit_unknown(
@@ -718,6 +721,27 @@ def test_a_snapshot_from_before_movement_tracking_is_an_explicit_unknown(
     )
     hit = unblocked_hit(config, "daily")
     assert hit is not None and "UNKNOWN" in hit.text
+    assert "does not track movement" in hit.text
+    assert "no previous snapshot" not in hit.text  # the file IS there
+
+
+def test_a_retargeted_wait_is_not_reported_as_unblocked(tmp_path: Path) -> None:
+    # Retargeting @blocked_by to an already-closed target between snapshots is a
+    # wait born stale, not a delivery: the item never sat overnight waiting on
+    # that target, so the bell must stay silent (Copilot, PR #49).
+    config = _config(
+        tmp_path,
+        "- [ ] ship the gate @id:gate\n"
+        "- [x] other thing @id:other\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://maestro/gate\n",
+    )
+    record(config, "daily", now=NOW)
+    (tmp_path / "maestro" / "TODO.md").write_text(
+        "- [ ] ship the gate @id:gate\n"
+        "- [x] other thing @id:other\n"
+        "- [ ] react to the gate @id:react @blocked_by:todo://maestro/other\n"
+    )
+    assert unblocked_hit(config, "daily") is None
 
 
 def test_a_legacy_slug_blocker_transition_is_reported(tmp_path: Path) -> None:

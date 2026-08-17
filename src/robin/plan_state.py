@@ -575,24 +575,32 @@ def unblocked_hit(config: RobinConfig, kind: str) -> Hit | None:
     if not stale_now:
         return None
     previous = load_state(config, kind)
-    tracked = previous is not None and all(
-        "movement" in entry for entry in previous.values()
-    )
-    if not tracked:
+    if previous is None or not all("movement" in entry for entry in previous.values()):
+        # Two distinct roads to the same honest answer: no snapshot at all
+        # (first run, unreadable file) vs a snapshot from before movement
+        # tracking. Blaming a missing file on its format would mislead the
+        # reader about what actually failed (Copilot, PR #49).
+        reason = (
+            f"there is no previous snapshot for the {kind} cadence"
+            if previous is None
+            else f"the previous {kind} snapshot does not track movement"
+        )
         return Hit(
             "(plan-unblocked)",
             1,
             f"{len(stale_now)} open plan item(s) currently wait on a blocker whose "
-            f"target is already closed, but the previous {kind} snapshot does not "
-            "track movement — which of them became unblocked since the previous "
-            "digest is UNKNOWN. This is a missing comparison baseline, never "
-            "evidence that nothing was unblocked.",
+            f"target is already closed, but {reason} — which of them became "
+            "unblocked since the previous digest is UNKNOWN. This is a missing "
+            "comparison baseline, never evidence that nothing was unblocked.",
         )
-    assert previous is not None
     newly = [
         item
         for item in stale_now
+        # The same blocker, waiting then and delivered now: a wait retargeted to
+        # an already-closed target between snapshots never sat overnight — it is
+        # born stale, not delivered (Copilot, PR #49).
         if previous.get(item.key, {}).get("movement") == "waiting-by-blocker"
+        and previous.get(item.key, {}).get("blocked_by") == item.blocked_by
     ]
     if not newly:
         return None
