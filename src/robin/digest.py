@@ -326,7 +326,10 @@ def run(kind: str, *, now: datetime | None = None) -> None:
     now = now.astimezone(zone) if now else datetime.now(zone)
     base = window(config, kind, now=now)
     period = Period(since=base.since, until=now, label=base.label)
-    text, sources, cost = compose(config, kind, period=period)
+    # now is passed alongside period: compose() hands it to the time-dependent
+    # sources (delta_hit, freshness_hit) — without it they would fall back to
+    # their own wall clock and the run's single-now guarantee would be a lie.
+    text, sources, cost = compose(config, kind, now=now, period=period)
     path = persist(config, kind, text, now=now)
     logger.info("digest persisted: %s (%d sources, cost=%s)", path, len(sources), cost)
     asyncio.run(post(config, text, kind))

@@ -243,6 +243,56 @@ def test_shadow_requires_a_pinned_until(tmp_path: Path) -> None:
         collect(config, Period(since=SINCE, until=None, label="open"))
 
 
+def test_commit_after_until_is_excluded(tmp_path: Path) -> None:
+    repo = tmp_path / "demo"
+    _init_repo(repo)
+    _commit(repo, "inside\n\nEpic: eco.x")
+    _commit(repo, "late\n\nEpic: eco.x", date="2026-07-10T10:00:00+00:00")
+    mirror = _registry_mirror(tmp_path, _REGISTRY)
+    snapshot = collect(_config(tmp_path, [repo, mirror]), PERIOD)
+    assert snapshot.per_epic["eco.x"]["commits"] == 1  # the late one is not counted
+
+
+def test_registry_unreadable_file_is_unavailable(tmp_path: Path) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file modes")
+    repo = tmp_path / "demo"
+    _init_repo(repo)
+    _commit(repo, "tagged\n\nEpic: eco.x")
+    mirror = _registry_mirror(tmp_path, _REGISTRY)
+    (mirror / "epics.toml").chmod(0o000)
+    try:
+        snapshot = collect(_config(tmp_path, [repo, mirror]), PERIOD)
+    finally:
+        (mirror / "epics.toml").chmod(0o644)
+    assert snapshot.provenance["registry"].startswith("unavailable: PermissionError")
+    assert snapshot.buckets["unverified"]["commits"] == 1
+
+
+def test_examples_are_canonically_sorted_regardless_of_git_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "demo"
+    _init_repo(repo)
+    mirror = _registry_mirror(tmp_path, _REGISTRY)
+
+    real_run = subprocess.run
+
+    def fake_run(args, **kwargs):
+        if "log" in args and str(repo) in args:
+            # git hands records newest-first: bbb before aaa
+            return SimpleNamespace(
+                returncode=0,
+                stdout="\x1ebbb\x1feco.zzz\x1f\x1eaaa\x1feco.nope\x1f",
+            )
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr("robin.epic_shadow.subprocess.run", fake_run)
+    snapshot = collect(_config(tmp_path, [repo, mirror]), PERIOD)
+    shas = [e["sha"] for e in snapshot.buckets["unregistered"]["examples"]]
+    assert shas == ["aaa", "bbb"]  # sorted by (repo, sha), not by git order
+
+
 def test_same_input_renders_byte_identical_artifacts(tmp_path: Path) -> None:
     repo = tmp_path / "demo"
     _init_repo(repo)
@@ -327,8 +377,26 @@ def test_run_hands_the_same_period_to_compose_and_shadow(
         seen["shadow"] = period
         return (var / "a", var / "b")
 
+    from robin.plan_state import delta_hit as real_delta_hit
+
+    def spy_collect_changes(config, period, **kwargs):
+        seen["collect_changes"] = period
+        return []
+
+    def spy_delta_hit(config, kind, *, now=None):
+        seen["delta_now"] = now
+        return real_delta_hit(config, kind, now=now)
+
+    fixed_now = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("robin.digest.compose", spy_compose)
+    monkeypatch.setattr("robin.digest.collect_changes", spy_collect_changes)
+    monkeypatch.setattr("robin.digest.delta_hit", spy_delta_hit)
     monkeypatch.setattr("robin.epic_shadow.run_shadow", spy_shadow)
-    run("weekly")
+    run("weekly", now=fixed_now)
     assert seen["compose"] is seen["shadow"]  # the same object, not an equal one
-    assert seen["compose"].until is not None  # and its top is pinned
+    # ...and the same object reaches the digest's own collector
+    assert seen["collect_changes"] is seen["compose"]
+    assert seen["compose"].until == fixed_now  # the top is pinned to the run's now
+    # the run's single now reaches the time-dependent sources too — without it
+    # delta_hit falls back to its own wall clock (review finding, round 1)
+    assert seen["delta_now"] == fixed_now
