@@ -34,6 +34,18 @@
 
 ## Дайджест и планы
 
+- [ ] Epic-axis shadow, срез 1 (Ф5 ADR-ECO-010): детерминированный shadow-рендер weekly-окна по оси эпиков @owner:github:andrei-shtanakov @id:epic-shadow-slice1 @epic:eco.epics
+      Спека и план — PR #54 (пара по правилу spec-authoring, оба контура CONVERGED);
+      имплементация по `docs/plans/2026-08-26-epic-shadow-implementation.md` идёт
+      следом. Приёмка среза: два подряд weekly-прогона на VPS с честным провенансом,
+      затем пересмотр порогов OQ-1 — решение владельца.
+- [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @blocked_by:dispatcher#199 @id:epic-shadow-pr-attribution @epic:eco.epics
+      Чтение `derived/snapshots/<host>.json` из KB (ветка `derived-snapshots`),
+      сопоставление локальных SHA с `commit_shas`/`merge_commit_sha`, классификация —
+      как опубликовал продюсер (D9), плюс вендоринг пиненой копии
+      `contracts/snapshot/v2` с двумя гарантиями. Закрывает обе заявленные неполноты
+      трейлерного источника (§4 спеки #54). Переходная форма `@blocked_by` — пункта-
+      носителя в TODO dispatcher ещё нет.
 - [x] Разобрать теги `@owner:` / `@blocked_by:` / `@trigger:` в `plan_state` и **исключить их из ключа идентичности** пункта. Блокирует разметку планов в остальных репо: без этого первая же разметка отчиталась бы как «56 закрыто, 56 открыто». Формат — §3 handoff-ноты 2026-07-26 (#27)
 - [x] Счётчик «пунктов без владельца» — отсутствие `@owner:` измеримо и честнее пустой колонки в реестре (#28). Замер 2026-07-26: было 67 из 67, к вечеру — **48 из 109**: соседи начали размечать, и счётчик показывает движение, как и задумано
 - [ ] Счётчики `Unblocked` / `Newly blocked` / `Trigger reached` в дельте @owner:github:andrei-shtanakov — **триггер сработал**: размечены Maestro (35 пунктов), spec-runner (16), arbiter (7), proctor (3); в графе 15 рёбер `@blocked_by:` и 20 `@trigger:`, отчитываться уже есть о чем. Нужно: сохранять `blocked_by`/`trigger` в снапшоте (сейчас пишется только `owner`) и решить, как резолвить `<repo>#<slug>` — в живых данных встречаются и `maestro#…`, и `Maestro#…`. `atp-platform` (43 пункта) пока без тегов — это сторона ATP, не блокирует @id:snapshot-blocker-trigger-fields @epic:eco.tooling
