@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import fmt
+from . import epic_shadow, fmt
 from .agent import _compose_answer  # same single LLM call site
 from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
@@ -346,6 +346,17 @@ def run(kind: str, *, now: datetime | None = None) -> None:
     }
     with (config.var_dir / "interactions.jsonl").open("a") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # Epic-axis shadow (ADR-ECO-010 Ф5, slice 1) — deliberately the LAST step:
+    # digest delivery, the delta baseline and the success record must never sit
+    # behind the measuring instrument. Same Period object the digest was
+    # composed over; any shadow failure is logged + best-effort recorded and
+    # never propagates (spec §3.1).
+    if kind == "weekly":
+        try:
+            epic_shadow.run_shadow(config, period)
+        except Exception as exc:  # noqa: BLE001 — isolation is the contract
+            logger.error("epic shadow failed: %s", exc)
+            epic_shadow.record_failure(config, str(exc))
 
 
 def main() -> None:
