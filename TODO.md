@@ -36,8 +36,7 @@
 
 - [ ] Epic-axis shadow, срез 1 (Ф5 ADR-ECO-010): детерминированный shadow-рендер weekly-окна по оси эпиков @owner:github:andrei-shtanakov @id:epic-shadow-slice1 @epic:eco.epics
       Спека и план — PR #54 (пара по правилу spec-authoring, оба контура CONVERGED);
-      имплементация по `docs/plans/2026-08-26-epic-shadow-implementation.md` идёт
-      следом. Приёмка среза: два подряд weekly-прогона на VPS с честным провенансом,
+      имплементация — PR #55 (все 6 задач плана, 2 раунда локального ревью). Приёмка среза: два подряд weekly-прогона на VPS с честным провенансом,
       затем пересмотр порогов OQ-1 — решение владельца.
 - [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @blocked_by:dispatcher#199 @id:epic-shadow-pr-attribution @epic:eco.epics
       Чтение `derived/snapshots/<host>.json` из KB (ветка `derived-snapshots`),

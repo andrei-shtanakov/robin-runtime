@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import fmt
+from . import epic_shadow, fmt
 from .agent import _compose_answer  # same single LLM call site
 from .changes import Period, collect_changes
 from .config import RobinConfig, load_config
@@ -225,10 +225,20 @@ def window(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pe
 
 
 def compose(
-    config: RobinConfig, kind: str, *, now: datetime | None = None
+    config: RobinConfig,
+    kind: str,
+    *,
+    now: datetime | None = None,
+    period: Period | None = None,
 ) -> tuple[str, list[Hit], float | None]:
-    """Compose the digest text via the standard grounded pipeline."""
-    period = window(config, kind, now=now)
+    """Compose the digest text via the standard grounded pipeline.
+
+    `period` lets run() own the window: the epic-axis shadow must see the very
+    same Period the digest was composed over (spec §3.1), and window() cannot
+    be re-called after persist() moves the marker.
+    """
+    if period is None:
+        period = window(config, kind, now=now)
     sources = [
         watched_repos_hit(config),
         *collect_changes(config, period, max_hits=CHANGE_HITS[kind]),
@@ -307,10 +317,20 @@ def _log_failure(config: RobinConfig, kind: str, error: str) -> None:
     logger.error("digest %s: %s", kind, error)
 
 
-def run(kind: str) -> None:
+def run(kind: str, *, now: datetime | None = None) -> None:
     config = load_config()
-    text, sources, cost = compose(config, kind)
-    path = persist(config, kind, text)
+    # The run's single clock: resolved exactly once, then only passed along. It
+    # pins the window top (until=now instead of a floating "now of each git
+    # log"), stamps generated_at, and is what the determinism test injects.
+    zone = ZoneInfo(config.tz)
+    now = now.astimezone(zone) if now else datetime.now(zone)
+    base = window(config, kind, now=now)
+    period = Period(since=base.since, until=now, label=base.label)
+    # now is passed alongside period: compose() hands it to the time-dependent
+    # sources (delta_hit, freshness_hit) — without it they would fall back to
+    # their own wall clock and the run's single-now guarantee would be a lie.
+    text, sources, cost = compose(config, kind, now=now, period=period)
+    path = persist(config, kind, text, now=now)
     logger.info("digest persisted: %s (%d sources, cost=%s)", path, len(sources), cost)
     asyncio.run(post(config, text, kind))
     # Baseline advances only once the digest has reached the team — persisting is not
@@ -329,6 +349,17 @@ def run(kind: str) -> None:
     }
     with (config.var_dir / "interactions.jsonl").open("a") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # Epic-axis shadow (ADR-ECO-010 Ф5, slice 1) — deliberately the LAST step:
+    # digest delivery, the delta baseline and the success record must never sit
+    # behind the measuring instrument. Same Period object the digest was
+    # composed over; any shadow failure is logged + best-effort recorded and
+    # never propagates (spec §3.1).
+    if kind == "weekly":
+        try:
+            epic_shadow.run_shadow(config, period)
+        except Exception as exc:  # noqa: BLE001 — isolation is the contract
+            logger.error("epic shadow failed: %s", exc)
+            epic_shadow.record_failure(config, str(exc))
 
 
 def main() -> None:

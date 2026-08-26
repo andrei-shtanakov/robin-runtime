@@ -49,6 +49,11 @@ _ECOSYSTEM_REPOS = (
     # the digest is not silently blind to them (the maestro/libretto lesson).
     "disputatio",
     "kapelle",
+    # Umbrella workspace: the epics registry (epics.toml) the epic-axis shadow
+    # digest reads live (ADR-ECO-010: grammar is vendored by consumers, values
+    # are read from the umbrella). Registered the day the consumer appeared
+    # (2026-08-26) — the maestro/libretto lesson again.
+    "ai-orchestrators-workspace",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
     # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
     # the VPS mirror layout that is a separate read-only clone (the runtime checkout
