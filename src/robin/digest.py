@@ -225,10 +225,20 @@ def window(config: RobinConfig, kind: str, *, now: datetime | None = None) -> Pe
 
 
 def compose(
-    config: RobinConfig, kind: str, *, now: datetime | None = None
+    config: RobinConfig,
+    kind: str,
+    *,
+    now: datetime | None = None,
+    period: Period | None = None,
 ) -> tuple[str, list[Hit], float | None]:
-    """Compose the digest text via the standard grounded pipeline."""
-    period = window(config, kind, now=now)
+    """Compose the digest text via the standard grounded pipeline.
+
+    `period` lets run() own the window: the epic-axis shadow must see the very
+    same Period the digest was composed over (spec §3.1), and window() cannot
+    be re-called after persist() moves the marker.
+    """
+    if period is None:
+        period = window(config, kind, now=now)
     sources = [
         watched_repos_hit(config),
         *collect_changes(config, period, max_hits=CHANGE_HITS[kind]),
@@ -307,10 +317,17 @@ def _log_failure(config: RobinConfig, kind: str, error: str) -> None:
     logger.error("digest %s: %s", kind, error)
 
 
-def run(kind: str) -> None:
+def run(kind: str, *, now: datetime | None = None) -> None:
     config = load_config()
-    text, sources, cost = compose(config, kind)
-    path = persist(config, kind, text)
+    # The run's single clock: resolved exactly once, then only passed along. It
+    # pins the window top (until=now instead of a floating "now of each git
+    # log"), stamps generated_at, and is what the determinism test injects.
+    zone = ZoneInfo(config.tz)
+    now = now.astimezone(zone) if now else datetime.now(zone)
+    base = window(config, kind, now=now)
+    period = Period(since=base.since, until=now, label=base.label)
+    text, sources, cost = compose(config, kind, period=period)
+    path = persist(config, kind, text, now=now)
     logger.info("digest persisted: %s (%d sources, cost=%s)", path, len(sources), cost)
     asyncio.run(post(config, text, kind))
     # Baseline advances only once the digest has reached the team — persisting is not
