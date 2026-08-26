@@ -253,6 +253,17 @@ def test_commit_after_until_is_excluded(tmp_path: Path) -> None:
     assert snapshot.per_epic["eco.x"]["commits"] == 1  # the late one is not counted
 
 
+def test_registry_oserror_is_unavailable(tmp_path: Path) -> None:
+    repo = tmp_path / "demo"
+    _init_repo(repo)
+    _commit(repo, "tagged\n\nEpic: eco.x")
+    mirror = _registry_mirror(tmp_path, None)
+    (mirror / "epics.toml").mkdir()  # read_text() raises IsADirectoryError (OSError)
+    snapshot = collect(_config(tmp_path, [repo, mirror]), PERIOD)
+    assert snapshot.provenance["registry"].startswith("unavailable: IsADirectoryError")
+    assert snapshot.buckets["unverified"]["commits"] == 1
+
+
 def test_registry_unreadable_file_is_unavailable(tmp_path: Path) -> None:
     if os.geteuid() == 0:
         pytest.skip("root ignores file modes")
@@ -387,10 +398,15 @@ def test_run_hands_the_same_period_to_compose_and_shadow(
         seen["delta_now"] = now
         return real_delta_hit(config, kind, now=now)
 
+    def spy_freshness_hit(config, *, now=None):
+        seen["freshness_now"] = now
+        return None
+
     fixed_now = datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("robin.digest.compose", spy_compose)
     monkeypatch.setattr("robin.digest.collect_changes", spy_collect_changes)
     monkeypatch.setattr("robin.digest.delta_hit", spy_delta_hit)
+    monkeypatch.setattr("robin.digest.freshness_hit", spy_freshness_hit)
     monkeypatch.setattr("robin.epic_shadow.run_shadow", spy_shadow)
     run("weekly", now=fixed_now)
     assert seen["compose"] is seen["shadow"]  # the same object, not an equal one
@@ -400,3 +416,4 @@ def test_run_hands_the_same_period_to_compose_and_shadow(
     # the run's single now reaches the time-dependent sources too — without it
     # delta_hit falls back to its own wall clock (review finding, round 1)
     assert seen["delta_now"] == fixed_now
+    assert seen["freshness_now"] == fixed_now
