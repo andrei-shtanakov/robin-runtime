@@ -38,7 +38,7 @@
       Спека и план — PR #54 (пара по правилу spec-authoring, оба контура CONVERGED);
       имплементация — PR #55 (все 6 задач плана, 2 раунда локального ревью). Приёмка среза: два подряд weekly-прогона на VPS с честным провенансом,
       затем пересмотр порогов OQ-1 — решение владельца.
-- [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @blocked_by:dispatcher#199 @id:epic-shadow-pr-attribution @epic:eco.epics
+- [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @id:epic-shadow-pr-attribution @epic:eco.epics
       Чтение `derived/snapshots/<host>.json` из KB (ветка `derived-snapshots`),
       сопоставление локальных SHA с `commit_shas`/`merge_commit_sha`, классификация —
       как опубликовал продюсер (D9), плюс вендоринг пиненой копии
