@@ -38,13 +38,19 @@
       Спека и план — PR #54 (пара по правилу spec-authoring, оба контура CONVERGED);
       имплементация — PR #55 (все 6 задач плана, 2 раунда локального ревью). Приёмка среза: два подряд weekly-прогона на VPS с честным провенансом,
       затем пересмотр порогов OQ-1 — решение владельца.
-- [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @blocked_by:dispatcher#199 @id:epic-shadow-pr-attribution @epic:eco.epics
+- [ ] Epic-axis shadow, срез 2: атрибуция commit→PR по `merged`-окну snapshot/v2 @owner:github:andrei-shtanakov @id:epic-shadow-pr-attribution @epic:eco.epics
       Чтение `derived/snapshots/<host>.json` из KB (ветка `derived-snapshots`),
       сопоставление локальных SHA с `commit_shas`/`merge_commit_sha`, классификация —
       как опубликовал продюсер (D9), плюс вендоринг пиненой копии
       `contracts/snapshot/v2` с двумя гарантиями. Закрывает обе заявленные неполноты
-      трейлерного источника (§4 спеки #54). Переходная форма `@blocked_by` — пункта-
-      носителя в TODO dispatcher ещё нет.
+      трейлерного источника (§4 спеки #54).
+      **2026-09-01: зависимость доставлена, ожидание снято.** `dispatcher#199`
+      закрыт как COMPLETED 2026-08-28; канал живой — ветка `derived-snapshots` в KB
+      несёт `derived/snapshots/EPGETBIW050F.json`, обновлённый 2026-09-01T07:45Z.
+      Переходная issue-форма `@blocked_by` снята по `cross-repo-waits.md`;
+      канонического пункта-носителя в TODO dispatcher по-прежнему нет, поэтому
+      переставлять тег некуда. Спека #54 (§43, §255) описывает канал как строящийся —
+      это состояние на 26.08, до доставки.
 - [x] Разобрать теги `@owner:` / `@blocked_by:` / `@trigger:` в `plan_state` и **исключить их из ключа идентичности** пункта. Блокирует разметку планов в остальных репо: без этого первая же разметка отчиталась бы как «56 закрыто, 56 открыто». Формат — §3 handoff-ноты 2026-07-26 (#27)
 - [x] Счётчик «пунктов без владельца» — отсутствие `@owner:` измеримо и честнее пустой колонки в реестре (#28). Замер 2026-07-26: было 67 из 67, к вечеру — **48 из 109**: соседи начали размечать, и счётчик показывает движение, как и задумано
 - [ ] Счётчики `Unblocked` / `Newly blocked` / `Trigger reached` в дельте @owner:github:andrei-shtanakov — **триггер сработал**: размечены Maestro (35 пунктов), spec-runner (16), arbiter (7), proctor (3); в графе 15 рёбер `@blocked_by:` и 20 `@trigger:`, отчитываться уже есть о чем. Нужно: сохранять `blocked_by`/`trigger` в снапшоте (сейчас пишется только `owner`) и решить, как резолвить `<repo>#<slug>` — в живых данных встречаются и `maestro#…`, и `Maestro#…`. `atp-platform` (43 пункта) пока без тегов — это сторона ATP, не блокирует @id:snapshot-blocker-trigger-fields @epic:eco.tooling
