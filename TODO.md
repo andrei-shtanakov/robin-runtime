@@ -105,6 +105,16 @@
 ## Наблюдаемость и эксплуатация
 
 - [x] Читатель последнего run `arch-evidence-freshness` в steward: вердикт clean / non-clean / unknown («schedule молчит», порог 30 ч) строкой в оба дайджеста — независимые вторые часы для cron-вахты, которая не может сообщить о собственном молчании; сбой чтения — явный unknown, не тишина. Запрос steward#arch-evidence-freshness-schedule, issue #42 (#43) @owner:github:andrei-shtanakov @id:arch-freshness-run-reader
+- [ ] Наблюдать чужие прогоны по квитанциям и доставлять тревоги в Telegram, ничего не исполняя (R16 claim-freshness первым, затем части R-2) @owner:github:andrei-shtanakov @blocked_by:devtools#382 @id:external-check-liveness @epic:eco.tooling
+      Запрос prograph-vault (R16) + devtools#382, issue #71. Read-only: квитанции из
+      service-state каталога внешнего runner'а на VPS, схема — пиненая копия контракта
+      devtools (`schema_version: 1`), не `_cowork_output/`. Ритм на `check_id`; четыре
+      состояния — «прогона нет» / «сломан» / «с находками» / «источник недоступен» (=
+      unknown, не clean). Тревога на переходе + ограниченное напоминание + восстановление,
+      дедуп по `check_id`+`cycle_id`+вид; одна строка со ссылкой; без LLM. Нынешний
+      `liveness.py` — база, но без дедупа и восстановления. Блокер: контракта квитанции
+      в devtools ещё нет (graduation runner'а — devtools#382), каталога service-state
+      на VPS тоже.
 - [ ] Решить судьбу `var/`-мусора при долгой работе: `interactions.jsonl`, `gaps.jsonl` и снапшоты планов растут без ротации @owner:github:andrei-shtanakov @trigger:"любой из файлов var/ > 50 МБ" @id:var-file-rotation @epic:eco.tooling
 
 ## Ждём соседей (не работа Robin, но от неё зависит форма обзоров)
