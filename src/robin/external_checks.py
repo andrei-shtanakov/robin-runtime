@@ -108,14 +108,14 @@ def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
         return unknown(f"квитанция {path.name} — не JSON")
     violation = contract_violation(receipt)
     if violation:
-        return unknown(f"квитанция {path.name} не по контракту: {violation}")
+        return unknown(f"квитанция {path.name} не по контракту: {_clip(violation)}")
     if receipt["cycle_id"] != cycle_id or receipt["check_id"] != CHECK_ID:
         return unknown(f"квитанция {path.name} описывает чужой цикл или проверку")
 
     if receipt["execution"] == "missed":
         return verdict(NO_RUN, f"цикл {cycle_id} никто не запускал (missed)")
     delivery = receipt["delivery"]
-    url = delivery.get("issue_url")
+    url = _clip(delivery.get("issue_url") or "")
     if receipt["execution"] == "failed" or not receipt["ok"]:
         reason = _clip(delivery.get("error") or receipt["execution"])
         tail = f" → {url}" if url else ""

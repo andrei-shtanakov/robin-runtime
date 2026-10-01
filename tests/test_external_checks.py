@@ -206,6 +206,26 @@ def test_foreign_error_text_is_clipped(tmp_path):
     verdict = ec.classify(tmp_path, "2026-09-29", WED)
     assert verdict.kind == ec.BROKEN
     assert len(verdict.text) < 300
+    long_url = "https://github.com/o/r/issues/7?" + "q" * 5000
+    findings = _example(
+        "completed-ok",
+        problems={"claims": 1, "revisions": 0, "coverage": 0},
+        delivery={
+            **delivery,
+            "action": "created",
+            "issue_url": long_url,
+            "error": None,
+        },
+    )
+    _write(tmp_path, findings)
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
+    assert verdict.kind == ec.FINDINGS
+    assert len(verdict.text) < 300
+    # the validator echoes the offending value: an off-contract receipt is clipped too
+    _write(tmp_path, {**findings, "attempt": "x" * 5000})
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
+    assert verdict.kind == ec.UNKNOWN
+    assert len(verdict.text) < 400
 
 
 def test_decide_recovery_only_after_a_problem():
