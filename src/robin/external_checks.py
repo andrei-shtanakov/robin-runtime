@@ -44,6 +44,9 @@ CYCLE = timedelta(days=7)
 # The runner retries hourly, at most 3 attempts (09:30..11:30); the rest is margin for
 # a late timer. Before start + GRACE the previous cycle is still the expected one.
 GRACE = timedelta(hours=6)
+# `ok: false` before the 3rd attempt may still close (contract README); the hourly
+# runner owes the next attempt within this window, after which the cycle is broken.
+RETRY_WINDOW = timedelta(hours=2)
 # The single reminder fires this long before the deadline (= next cycle start).
 REMIND_BEFORE = timedelta(hours=24)
 STATE_FILE = "external_checks.json"
@@ -52,6 +55,7 @@ _CONTRACT = Path(__file__).resolve().parents[2] / "contracts" / "r16-receipt"
 SCHEMA_DIRS = {1: _CONTRACT / "v1"}
 
 CLEAN = "clean"
+PENDING = "pending"  # a retry is still due: not a transition, never alerted
 NO_RUN = "no-run"
 BROKEN = "broken"
 FINDINGS = "findings"
@@ -77,7 +81,7 @@ def expected_cycle(now: datetime) -> date:
     return start.date()
 
 
-def classify(receipts_dir: Path, cycle_id: str) -> Verdict:
+def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
     """Read the receipt of `cycle_id` and name its state (contract reading rules)."""
 
     def verdict(kind: str, text: str) -> Verdict:
@@ -113,6 +117,8 @@ def classify(receipts_dir: Path, cycle_id: str) -> Verdict:
         reason = delivery.get("error") or receipt["execution"]
         tail = f" → {url}" if url else ""
         attempt = receipt["attempt"]
+        if attempt < 3 and _local(receipt["finished_at"]) + RETRY_WINDOW > now:
+            return verdict(PENDING, f"цикл {cycle_id}: попытка {attempt}/3 не удалась")
         return verdict(
             BROKEN, f"цикл {cycle_id} сломан, попытка {attempt}/3: {reason}{tail}"
         )
@@ -126,6 +132,12 @@ def classify(receipts_dir: Path, cycle_id: str) -> Verdict:
     return verdict(CLEAN, f"цикл {cycle_id} закрыт, находок нет")
 
 
+def _local(stamp: str) -> datetime:
+    """Contract timestamps; one without an offset means Asia/Tbilisi (README)."""
+    moment = datetime.fromisoformat(stamp)
+    return moment if moment.tzinfo else moment.replace(tzinfo=CYCLE_TZ)
+
+
 def contract_violation(receipt: object) -> str | None:
     """Why `receipt` breaks the vendored contract, or None when it conforms."""
     if not isinstance(receipt, dict):
@@ -134,7 +146,11 @@ def contract_violation(receipt: object) -> str | None:
     if version not in SCHEMA_DIRS:
         return f"schema_version {version!r} не поддерживается"
     if _is_pre_contract(receipt):
-        return _pre_contract_violation(receipt)
+        # exactly the relaxation the README grants (timestamps without an offset are
+        # already allowed by the schema pattern); any other deviation stays fatal
+        producer = receipt.get("producer")
+        producer = producer if isinstance(producer, dict) else {}
+        receipt = {**receipt, "producer": {**producer, "host": "pre-contract"}}
     error = best_match(_validator(version).iter_errors(receipt))
     return error.message if error else None
 
@@ -149,24 +165,6 @@ def _is_pre_contract(receipt: dict) -> bool:
     return not (isinstance(producer, dict) and producer.get("host"))
 
 
-def _pre_contract_violation(receipt: dict) -> str | None:
-    """Pre-contract history is not schema-valid; check only the fields read here."""
-    shape = {
-        "check_id": str,
-        "cycle_id": str,
-        "attempt": int,
-        "ok": bool,
-        "problems": dict,
-        "delivery": dict,
-    }
-    for key, kind in shape.items():
-        if not isinstance(receipt.get(key), kind):
-            return f"история до контракта без поля {key}"
-    if not all(isinstance(n, int) for n in receipt["problems"].values()):
-        return "история до контракта: problems не числа"
-    return None
-
-
 @cache
 def _validator(version: int) -> Draft202012Validator:
     schema = json.loads((SCHEMA_DIRS[version] / "schema.json").read_text())
@@ -175,8 +173,10 @@ def _validator(version: int) -> Draft202012Validator:
 
 def decide(
     prev: dict | None, verdict: Verdict, now: datetime
-) -> tuple[str | None, dict]:
+) -> tuple[str | None, dict | None]:
     """Message to send (or None) and the state to keep — dedup by cycle + kind."""
+    if verdict.kind == PENDING:
+        return None, prev
     state = {"cycle_id": verdict.cycle_id, "kind": verdict.kind, "reminded": False}
     if verdict.kind == CLEAN:
         if prev and prev.get("kind") != CLEAN:
@@ -202,7 +202,8 @@ def run(config: RobinConfig, send: Callable[[str], bool], now: datetime) -> bool
     maintainer chat is configured: the state is then kept, so the alert repeats."""
     if config.r16_receipts_dir is None:
         return True
-    verdict = classify(config.r16_receipts_dir, expected_cycle(now).isoformat())
+    cycle_id = expected_cycle(now).isoformat()
+    verdict = classify(config.r16_receipts_dir, cycle_id, now)
     states = _load_state(config.var_dir / STATE_FILE)
     message, new = decide(states.get(CHECK_ID), verdict, now)
     logger.info("%s cycle %s: %s", CHECK_ID, verdict.cycle_id, verdict.kind)
@@ -214,7 +215,7 @@ def run(config: RobinConfig, send: Callable[[str], bool], now: datetime) -> bool
             return False
         if not delivered:
             return False
-    if new != states.get(CHECK_ID):
+    if new is not None and new != states.get(CHECK_ID):
         _save_state(config.var_dir / STATE_FILE, {**states, CHECK_ID: new})
     return True
 

@@ -73,7 +73,7 @@ def test_expected_cycle(now, expected):
 
 def test_clean_cycle(tmp_path):
     _write(tmp_path, _example("completed-ok"))
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.CLEAN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.CLEAN
 
 
 def test_findings_carry_count_deadline_and_link(tmp_path):
@@ -86,30 +86,30 @@ def test_findings_carry_count_deadline_and_link(tmp_path):
             delivery={"action": "created", "issue": 7, "issue_url": url, "error": None},
         ),
     )
-    verdict = ec.classify(tmp_path, "2026-09-29")
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
     assert verdict.kind == ec.FINDINGS
     assert verdict.text == f"R16: находок 1 ждут разбора до 06.10 → {url}"
 
 
 def test_failed_and_undelivered_are_broken(tmp_path):
     _write(tmp_path, _example("failed"))
-    verdict = ec.classify(tmp_path, "2026-09-29")
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
     assert verdict.kind == ec.BROKEN
     assert "audit did not complete" in verdict.text
     delivery = {"action": "failed", "issue": None, "issue_url": None, "error": "gh 502"}
     _write(tmp_path, _example("completed-ok", ok=False, delivery=delivery))
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.BROKEN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.BROKEN
 
 
 def test_missing_and_missed_are_no_run(tmp_path):
     tmp_path.mkdir(exist_ok=True)
-    verdict = ec.classify(tmp_path, "2026-09-29")
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
     assert (verdict.kind, verdict.text) == (
         ec.NO_RUN,
         "R16: за цикл 2026-09-29 квитанции нет",
     )
     _write(tmp_path, _example("missed", cycle_id="2026-09-29"))
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.NO_RUN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.NO_RUN
 
 
 @pytest.mark.parametrize(
@@ -123,26 +123,46 @@ def test_missing_and_missed_are_no_run(tmp_path):
 )
 def test_unreadable_or_off_contract_is_unknown_not_clean(tmp_path, receipt):
     _write(tmp_path, receipt)
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.UNKNOWN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.UNKNOWN
 
 
 def test_receipt_of_another_cycle_is_unknown(tmp_path):
     receipt = _example("completed-ok", cycle_id="2026-09-22")
     (tmp_path / "2026-09-29.json").write_text(json.dumps(receipt))
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.UNKNOWN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.UNKNOWN
 
 
 def test_missing_directory_is_unknown(tmp_path):
-    verdict = ec.classify(tmp_path / "nope", "2026-09-29")
+    verdict = ec.classify(tmp_path / "nope", "2026-09-29", WED)
     assert verdict.kind == ec.UNKNOWN
     assert "каталог квитанций" in verdict.text
 
 
 def test_pre_contract_receipt_is_read_not_rejected(tmp_path):
-    receipt = _example("completed-ok", started_at="2026-09-29T09:30:12")
-    del receipt["producer"]
+    # the real Mac receipt: producer without host, timestamps without an offset
+    real = Path(__file__).parent / "fixtures" / "r16-pre-contract-2026-09-22.json"
+    _write(tmp_path, json.loads(real.read_text()))
+    assert ec.classify(tmp_path, "2026-09-22", WED).kind == ec.CLEAN
+
+
+def test_pre_contract_relaxes_only_producer_host(tmp_path):
+    receipt = _example("completed-ok", problems={})
+    del receipt["producer"]["host"]
     _write(tmp_path, receipt)
-    assert ec.classify(tmp_path, "2026-09-29").kind == ec.CLEAN
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.UNKNOWN
+
+
+def test_failure_before_the_last_attempt_is_pending_until_the_retry_is_late(tmp_path):
+    failed = _example("failed", attempt=1, finished_at="2026-09-30T11:00:00+04:00")
+    _write(tmp_path, failed)
+    soon = datetime(2026, 9, 30, 8, 30, tzinfo=timezone.utc)  # 12:30 Tbilisi
+    verdict = ec.classify(tmp_path, "2026-09-29", soon)
+    assert verdict.kind == ec.PENDING
+    assert ec.decide(None, verdict, soon) == (None, None)
+    late = soon + timedelta(hours=2)
+    assert ec.classify(tmp_path, "2026-09-29", late).kind == ec.BROKEN
+    _write(tmp_path, {**failed, "attempt": 3})
+    assert ec.classify(tmp_path, "2026-09-29", soon).kind == ec.BROKEN
 
 
 def _v(kind: str, cycle: str = "2026-09-29") -> ec.Verdict:

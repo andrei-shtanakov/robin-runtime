@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "check_id": "r16-kb-freshness",
+  "started_at": "2026-09-23T19:01:41",
+  "finished_at": "2026-09-23T19:01:56",
+  "target": "published",
+  "execution": "completed",
+  "revisions": {
+    "devtools": "cf79b281ff0afeb5a0f3d07cfb91acd5ab3d2b44",
+    "dispatcher": "7512992b0dd4ef04a9cc6d5295cfcd8ed01e22ef",
+    "prograph-vault": "b2673476873fc7c608e53fae9f6a77fb821e4f60",
+    "steward": "7b31b3b3123eae833d7f70759691383190e0138d"
+  },
+  "coverage": {
+    "notes": 214,
+    "with_evidence": 4,
+    "unparsed_frontmatter": 5
+  },
+  "statuses": {
+    "unchanged": 12,
+    "changed": 0,
+    "missing": 0,
+    "unverified": 0,
+    "invalid": 0
+  },
+  "problems": {
+    "claims": 0,
+    "revisions": 0,
+    "coverage": 0
+  },
+  "delivery": {
+    "action": "not-needed",
+    "issue": null,
+    "issue_url": null,
+    "error": null
+  },
+  "audit_tail": null,
+  "ok": true,
+  "cycle_id": "2026-09-22",
+  "attempt": 1,
+  "producer": {
+    "runner": "33187e1af8444693859fd6c0695ee012f9a1580c+dirty",
+    "auditor": "b2673476873fc7c608e53fae9f6a77fb821e4f60"
+  }
+}
