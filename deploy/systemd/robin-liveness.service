@@ -1,5 +1,5 @@
 [Unit]
-Description=Robin: §7 liveness check — alert when digests go stale
+Description=Robin: §7 liveness check — stale digests + external check receipts (R16)
 
 [Service]
 Type=oneshot

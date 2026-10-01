@@ -65,6 +65,11 @@ server {
 - [ ] `systemctl start robin-digest-daily.service` → post appears in the channel,
       file appears in `/srv/robin/var/digests/` (M2).
 - [ ] Stop the timers for a day → liveness alert lands in the maintainer DM (§7).
+- [ ] External checks (issue #71): `sudo -u robin cat /srv/r16/state/receipts/<cycle>.json`
+      succeeds (group `r16-readers`), then `systemctl start robin-liveness.service` and
+      `cat /srv/robin/var/external_checks.json` names the expected cycle and its kind.
+      Until devtools' R16 runner is handed over to the VPS the kind is `unknown`
+      (one DM per cycle + one reminder) — that is the named gap, not a bug.
 - [ ] Web: open `https://robin.example.com`, paste `ROBIN_WEB_TOKEN`, ask by text and mic.
 - [ ] `/cost` in Telegram shows today's spend after the above.
 - [ ] §6.7 spot-check: ask a question whose answer quotes `<` (e.g. generics in Rust code)
