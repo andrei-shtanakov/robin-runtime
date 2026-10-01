@@ -187,6 +187,27 @@ def test_decide_reminds_once_before_deadline():
     assert ec.decide(state, _v(ec.FINDINGS), later) == (None, state)
 
 
+def test_first_alert_inside_the_reminder_window_is_not_repeated():
+    monday = datetime(2026, 10, 5, 6, 0, tzinfo=timezone.utc)  # 10:00 Tbilisi
+    message, state = ec.decide(None, _v(ec.UNKNOWN), monday)
+    assert message == "⚠️ R16: unknown"
+    later = monday + timedelta(hours=1)
+    assert ec.decide(state, _v(ec.UNKNOWN), later) == (None, state)
+
+
+def test_receipt_finished_in_the_future_is_unknown_not_pending(tmp_path):
+    _write(tmp_path, _example("failed", attempt=1, finished_at="2026-10-02T10:00:00"))
+    assert ec.classify(tmp_path, "2026-09-29", WED).kind == ec.UNKNOWN
+
+
+def test_foreign_error_text_is_clipped(tmp_path):
+    delivery = {"action": "skipped", "issue": None, "issue_url": None}
+    _write(tmp_path, _example("failed", delivery={**delivery, "error": "x" * 5000}))
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
+    assert verdict.kind == ec.BROKEN
+    assert len(verdict.text) < 300
+
+
 def test_decide_recovery_only_after_a_problem():
     assert ec.decide(None, _v(ec.CLEAN), WED)[0] is None
     _, state = ec.decide(None, _v(ec.UNKNOWN), WED)

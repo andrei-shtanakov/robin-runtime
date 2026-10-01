@@ -49,6 +49,9 @@ GRACE = timedelta(hours=6)
 RETRY_WINDOW = timedelta(hours=2)
 # The single reminder fires this long before the deadline (= next cycle start).
 REMIND_BEFORE = timedelta(hours=24)
+# Text taken from someone else's receipt is cut to this: Telegram rejects messages over
+# 4096 chars, and a rejected alert would retry (and fail) every hour.
+MAX_REASON = 200
 STATE_FILE = "external_checks.json"
 
 _CONTRACT = Path(__file__).resolve().parents[2] / "contracts" / "r16-receipt"
@@ -114,10 +117,13 @@ def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
     delivery = receipt["delivery"]
     url = delivery.get("issue_url")
     if receipt["execution"] == "failed" or not receipt["ok"]:
-        reason = delivery.get("error") or receipt["execution"]
+        reason = _clip(delivery.get("error") or receipt["execution"])
         tail = f" → {url}" if url else ""
         attempt = receipt["attempt"]
-        if attempt < 3 and _local(receipt["finished_at"]) + RETRY_WINDOW > now:
+        finished = _local(receipt["finished_at"])
+        if finished > now:  # a clock we cannot trust must not silence the alert
+            return unknown(f"квитанция {path.name} закончена в будущем ({finished})")
+        if attempt < 3 and finished + RETRY_WINDOW > now:
             return verdict(PENDING, f"цикл {cycle_id}: попытка {attempt}/3 не удалась")
         return verdict(
             BROKEN, f"цикл {cycle_id} сломан, попытка {attempt}/3: {reason}{tail}"
@@ -130,6 +136,10 @@ def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
             f"находок {found} ждут разбора до {deadline} → {url or 'issue не указан'}",
         )
     return verdict(CLEAN, f"цикл {cycle_id} закрыт, находок нет")
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= MAX_REASON else text[: MAX_REASON - 1] + "…"
 
 
 def _local(stamp: str) -> datetime:
@@ -182,15 +192,17 @@ def decide(
         if prev and prev.get("kind") != CLEAN:
             return f"✅ {verdict.text} (восстановлено)", state
         return None, state
+    deadline = datetime.combine(
+        date.fromisoformat(verdict.cycle_id) + CYCLE, CYCLE_START, CYCLE_TZ
+    )
+    near_deadline = now >= deadline - REMIND_BEFORE
     if not prev or (prev.get("cycle_id"), prev.get("kind")) != (
         verdict.cycle_id,
         verdict.kind,
     ):
-        return f"⚠️ {verdict.text}", state
-    deadline = datetime.combine(
-        date.fromisoformat(verdict.cycle_id) + CYCLE, CYCLE_START, CYCLE_TZ
-    )
-    if not prev.get("reminded") and now >= deadline - REMIND_BEFORE:
+        # first seen inside the reminder window: the alert IS the reminder
+        return f"⚠️ {verdict.text}", {**state, "reminded": near_deadline}
+    if not prev.get("reminded") and near_deadline:
         return f"⏰ Напоминание. {verdict.text}", {**state, "reminded": True}
     return None, prev
 
