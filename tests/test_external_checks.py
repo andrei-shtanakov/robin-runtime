@@ -206,6 +206,19 @@ def test_foreign_error_text_is_clipped(tmp_path):
     verdict = ec.classify(tmp_path, "2026-09-29", WED)
     assert verdict.kind == ec.BROKEN
     assert len(verdict.text) < 300
+    long_url = "https://github.com/o/r/issues/7?" + "q" * 5000
+    findings = _example(
+        "completed-ok",
+        problems={"claims": 1, "revisions": 0, "coverage": 0},
+        delivery={
+            **delivery,
+            "action": "created",
+            "issue_url": long_url,
+            "error": None,
+        },
+    )
+    _write(tmp_path, findings)
+    assert len(ec.classify(tmp_path, "2026-09-29", WED).text) < 300
 
 
 def test_decide_recovery_only_after_a_problem():

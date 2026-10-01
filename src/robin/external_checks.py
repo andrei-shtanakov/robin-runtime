@@ -115,7 +115,7 @@ def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
     if receipt["execution"] == "missed":
         return verdict(NO_RUN, f"цикл {cycle_id} никто не запускал (missed)")
     delivery = receipt["delivery"]
-    url = delivery.get("issue_url")
+    url = _clip(delivery.get("issue_url") or "")
     if receipt["execution"] == "failed" or not receipt["ok"]:
         reason = _clip(delivery.get("error") or receipt["execution"])
         tail = f" → {url}" if url else ""
