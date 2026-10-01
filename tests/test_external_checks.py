@@ -218,7 +218,14 @@ def test_foreign_error_text_is_clipped(tmp_path):
         },
     )
     _write(tmp_path, findings)
-    assert len(ec.classify(tmp_path, "2026-09-29", WED).text) < 300
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
+    assert verdict.kind == ec.FINDINGS
+    assert len(verdict.text) < 300
+    # the validator echoes the offending value: an off-contract receipt is clipped too
+    _write(tmp_path, {**findings, "audit_tail": 7, "target": "x" * 5000})
+    verdict = ec.classify(tmp_path, "2026-09-29", WED)
+    assert verdict.kind == ec.UNKNOWN
+    assert len(verdict.text) < 400
 
 
 def test_decide_recovery_only_after_a_problem():

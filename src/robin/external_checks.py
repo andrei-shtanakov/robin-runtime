@@ -108,7 +108,7 @@ def classify(receipts_dir: Path, cycle_id: str, now: datetime) -> Verdict:
         return unknown(f"квитанция {path.name} — не JSON")
     violation = contract_violation(receipt)
     if violation:
-        return unknown(f"квитанция {path.name} не по контракту: {violation}")
+        return unknown(f"квитанция {path.name} не по контракту: {_clip(violation)}")
     if receipt["cycle_id"] != cycle_id or receipt["check_id"] != CHECK_ID:
         return unknown(f"квитанция {path.name} описывает чужой цикл или проверку")
 
