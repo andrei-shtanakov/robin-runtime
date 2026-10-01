@@ -195,8 +195,11 @@ def decide(
     return None, prev
 
 
-def run(config: RobinConfig, send: Callable[[str], None], now: datetime) -> bool:
-    """Check every external source once; False when a due message failed to send."""
+def run(config: RobinConfig, send: Callable[[str], bool], now: datetime) -> bool:
+    """Check every external source once; False when a due message was not delivered.
+
+    `send` returns False (or raises) when the message did not reach anyone, e.g. no
+    maintainer chat is configured: the state is then kept, so the alert repeats."""
     if config.r16_receipts_dir is None:
         return True
     verdict = classify(config.r16_receipts_dir, expected_cycle(now).isoformat())
@@ -205,9 +208,11 @@ def run(config: RobinConfig, send: Callable[[str], None], now: datetime) -> bool
     logger.info("%s cycle %s: %s", CHECK_ID, verdict.cycle_id, verdict.kind)
     if message:
         try:
-            send(message)
+            delivered = send(message)
         except Exception:  # ambiguous Telegram failures included: retry next run
             logger.exception("alert for %s not delivered; will retry", CHECK_ID)
+            return False
+        if not delivered:
             return False
     if new != states.get(CHECK_ID):
         _save_state(config.var_dir / STATE_FILE, {**states, CHECK_ID: new})

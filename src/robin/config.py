@@ -153,6 +153,12 @@ class RobinConfig:
         return roots
 
 
+def _optional_path(value: str) -> Path | None:
+    """Empty means off: Path("") would silently read the service's working dir."""
+    value = value.strip()
+    return Path(value) if value else None
+
+
 def load_config() -> RobinConfig:
     """Build config from env with ecosystem defaults."""
     vault = Path(os.environ.get("ROBIN_VAULT", str(_DEFAULT_VAULT))).resolve()
@@ -180,7 +186,7 @@ def load_config() -> RobinConfig:
         freshness_repo=os.environ.get(
             "ROBIN_FRESHNESS_REPO", "andrei-shtanakov/steward"
         ).strip(),
-        r16_receipts_dir=Path(
+        r16_receipts_dir=_optional_path(
             os.environ.get("ROBIN_R16_RECEIPTS_DIR", "/srv/r16/state/receipts")
         ),
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,

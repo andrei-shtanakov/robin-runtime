@@ -17,6 +17,16 @@ def _isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ROBIN_VAR_DIR", str(tmp_path / "var"))
 
 
+def test_r16_receipts_reader_on_by_default_and_empty_turns_it_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ROBIN_R16_RECEIPTS_DIR", raising=False)
+    assert load_config().r16_receipts_dir == Path("/srv/r16/state/receipts")
+    # systemd passes `KEY=` as "": Path("") would read the unit's working dir
+    monkeypatch.setenv("ROBIN_R16_RECEIPTS_DIR", " ")
+    assert load_config().r16_receipts_dir is None
+
+
 def test_plan_exempt_is_the_canonical_in_repo_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

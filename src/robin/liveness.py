@@ -46,14 +46,15 @@ async def alert(config: RobinConfig, kinds: list[str]) -> None:
     )
 
 
-async def notify(config: RobinConfig, text: str) -> None:
-    """Send `text` to the maintainer DM; log-only when no chat is configured."""
+async def notify(config: RobinConfig, text: str) -> bool:
+    """Send `text` to the maintainer DM; False when it was only logged (no chat)."""
     if not (config.telegram_token and config.maintainer_chat):
         logger.error("%s (no maintainer chat configured — log-only alert)", text)
-        return
+        return False
     from telegram import Bot
 
     await Bot(config.telegram_token).send_message(config.maintainer_chat, text)
+    return True
 
 
 def main() -> None:

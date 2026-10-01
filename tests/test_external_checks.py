@@ -175,17 +175,21 @@ def test_decide_recovery_only_after_a_problem():
     assert ec.decide(state, _v(ec.CLEAN), WED)[0] is None
 
 
+def _collect(sent: list[str]):
+    return lambda text: sent.append(text) or True
+
+
 def test_run_dedups_across_runs(tmp_path):
     config = _config(tmp_path)
     sent: list[str] = []
-    assert ec.run(config, sent.append, WED)
-    assert ec.run(config, sent.append, WED + timedelta(hours=1))
+    assert ec.run(config, _collect(sent), WED)
+    assert ec.run(config, _collect(sent), WED + timedelta(hours=1))
     assert sent == [
         "⚠️ R16: состояние цикла 2026-09-29 неизвестно — "
         f"каталог квитанций {tmp_path / 'receipts'} недоступен"
     ]
     _write(tmp_path / "receipts", _example("completed-ok"))
-    assert ec.run(config, sent.append, WED + timedelta(hours=2))
+    assert ec.run(config, _collect(sent), WED + timedelta(hours=2))
     assert sent[-1] == "✅ R16: цикл 2026-09-29 закрыт, находок нет (восстановлено)"
 
 
@@ -197,7 +201,18 @@ def test_failed_send_is_retried_next_run(tmp_path):
 
     assert not ec.run(config, boom, WED)
     sent: list[str] = []
-    assert ec.run(config, sent.append, WED)
+    assert ec.run(config, _collect(sent), WED)
+    assert len(sent) == 1
+
+
+def test_log_only_delivery_is_not_recorded(tmp_path):
+    # notify() returns False without a maintainer chat: the transition must not be
+    # spent on a log line, or the alert never reaches the DM once a chat exists.
+    config = _config(tmp_path)
+    assert not ec.run(config, lambda _: False, WED)
+    assert not (config.var_dir / ec.STATE_FILE).exists()
+    sent: list[str] = []
+    assert ec.run(config, _collect(sent), WED)
     assert len(sent) == 1
 
 
