@@ -573,6 +573,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
+    { name = "jsonschema" },
     { name = "openai" },
     { name = "plan-fields" },
     { name = "python-multipart" },
@@ -590,6 +591,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.50" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "openai", specifier = ">=1.30" },
     { name = "plan-fields", git = "https://github.com/andrei-shtanakov/dispatcher?subdirectory=packages%2Fplan-fields&rev=65f03ea9e5964e4488bcd254e491fc42abb1bd96" },
     { name = "python-multipart", specifier = ">=0.0.9" },

@@ -11,6 +11,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "openai>=1.30",  # slot 21 default STT/TTS provider (pluggable via voice.py)
     "plan-fields",  # ADR-ECO-005 PF-7: the ONE plan-fields parser (pinned, below)
+    "jsonschema>=4.26.0",  # validates external receipts (contracts/r16-receipt/)
 ]
 
 # plan-fields is consumed as a PINNED git dependency, not copied inward — the

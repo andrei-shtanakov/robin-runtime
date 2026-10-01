@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "check_id": "r16-kb-freshness",
+  "cycle_id": "2026-09-29",
+  "attempt": 2,
+  "started_at": "2026-09-29T10:30:03+04:00",
+  "finished_at": "2026-09-29T10:30:05+04:00",
+  "target": "published",
+  "producer": {
+    "runner": "89b87c9f0000000000000000000000000000abcd",
+    "auditor": "4170bc6f0000000000000000000000000000abcd",
+    "host": "vps"
+  },
+  "revisions": {},
+  "coverage": {},
+  "statuses": {},
+  "problems": {"claims": 0, "revisions": 0, "coverage": 0},
+  "execution": "failed",
+  "delivery": {
+    "action": "skipped",
+    "issue": null,
+    "issue_url": null,
+    "error": "audit did not complete"
+  },
+  "audit_tail": "vault not published: HEAD 1a2b3c4d5e6f is not origin/main 6f5e4d3c2b1a",
+  "ok": false
+}

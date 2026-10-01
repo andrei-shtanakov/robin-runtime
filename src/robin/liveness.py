@@ -1,7 +1,8 @@
 """§7 liveness: alert the maintainer when the newest digest is older than cadence + grace.
 
 Run hourly by a systemd timer: `python -m robin.liveness`. A silently-dead digest duty is
-the spec's canonical failure mode ("always-on" on a machine that sleeps)."""
+the spec's canonical failure mode ("always-on" on a machine that sleeps). The same run
+checks external checks by their receipts (`external_checks`, issue #71)."""
 
 from __future__ import annotations
 
@@ -9,7 +10,9 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import datetime, timezone
 
+from . import external_checks
 from .config import RobinConfig, load_config
 from .digest import CADENCE_HOURS, _marker
 from .log import setup_logging
@@ -35,11 +38,16 @@ def stale_kinds(config: RobinConfig, *, now: float | None = None) -> list[str]:
 
 
 async def alert(config: RobinConfig, kinds: list[str]) -> None:
-    text = (
+    await notify(
+        config,
         "⚠️ Robin liveness: digest(s) overdue — "
         + ", ".join(kinds)
-        + ". Check the robin-digest timers on the VPS."
+        + ". Check the robin-digest timers on the VPS.",
     )
+
+
+async def notify(config: RobinConfig, text: str) -> None:
+    """Send `text` to the maintainer DM; log-only when no chat is configured."""
     if not (config.telegram_token and config.maintainer_chat):
         logger.error("%s (no maintainer chat configured — log-only alert)", text)
         return
@@ -52,11 +60,21 @@ def main() -> None:
     setup_logging()
     config = load_config()
     kinds = stale_kinds(config)
-    if not kinds:
+    if kinds:
+        asyncio.run(alert(config, kinds))
+    else:
         logger.info("liveness ok")
-        return
-    asyncio.run(alert(config, kinds))
-    sys.exit(1)  # visible to systemd as a failed unit too
+    try:  # never let the external reader mask the digest check above
+        delivered = external_checks.run(
+            config,
+            lambda text: asyncio.run(notify(config, text)),
+            datetime.now(timezone.utc),
+        )
+    except Exception:
+        logger.exception("external checks crashed")
+        delivered = False
+    if kinds or not delivered:
+        sys.exit(1)  # visible to systemd as a failed unit too
 
 
 if __name__ == "__main__":

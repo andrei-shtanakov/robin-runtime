@@ -111,6 +111,12 @@ class RobinConfig:
     # constructed test configs never touch the network; load_config() turns it on.
     freshness_repo: str = ""
 
+    # Receipts of the external R16 runner (issue #71): a read-only service-state
+    # directory owned by another user on the same VPS. None = reader off; the
+    # dataclass default is off so test configs never touch /srv, load_config()
+    # turns it on. A configured but unreadable directory is UNKNOWN, never clean.
+    r16_receipts_dir: Path | None = None
+
     # slot 1: Telegram surface. Secrets env-only (slot 17); non-secrets kept here too so
     # every adapter reads one object.
     telegram_token: str | None = None
@@ -174,6 +180,9 @@ def load_config() -> RobinConfig:
         freshness_repo=os.environ.get(
             "ROBIN_FRESHNESS_REPO", "andrei-shtanakov/steward"
         ).strip(),
+        r16_receipts_dir=Path(
+            os.environ.get("ROBIN_R16_RECEIPTS_DIR", "/srv/r16/state/receipts")
+        ),
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_channel=os.environ.get("ROBIN_TELEGRAM_CHANNEL") or None,
         maintainer_chat=os.environ.get("ROBIN_MAINTAINER_CHAT") or None,

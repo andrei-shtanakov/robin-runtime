@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "check_id": "r16-kb-freshness",
+  "cycle_id": "2026-09-15",
+  "attempt": 0,
+  "noted_at": "2026-09-23T17:00:00+04:00",
+  "execution": "missed",
+  "revisions": {},
+  "delivery": {"action": "not-run", "issue": null, "issue_url": null, "error": null},
+  "ok": false
+}

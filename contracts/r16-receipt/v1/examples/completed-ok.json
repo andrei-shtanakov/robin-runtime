@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "check_id": "r16-kb-freshness",
+  "cycle_id": "2026-09-29",
+  "attempt": 1,
+  "started_at": "2026-09-29T09:30:12+04:00",
+  "finished_at": "2026-09-29T09:31:40+04:00",
+  "target": "published",
+  "producer": {
+    "runner": "89b87c9f0000000000000000000000000000abcd",
+    "auditor": "4170bc6f0000000000000000000000000000abcd",
+    "host": "vps"
+  },
+  "revisions": {"steward": "a3f1c2d40000000000000000000000000000abcd"},
+  "coverage": {"notes": 120, "with_evidence": 14, "unparsed_frontmatter": 0},
+  "statuses": {"unchanged": 31, "changed": 0, "missing": 0, "unverified": 0, "invalid": 0},
+  "problems": {"claims": 0, "revisions": 0, "coverage": 0},
+  "execution": "completed",
+  "delivery": {"action": "not-needed", "issue": null, "issue_url": null, "error": null},
+  "audit_tail": null,
+  "ok": true
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andrei-shtanakov/devtools/contracts/r16-receipt/v1/schema.json",
+  "title": "R16 receipt v1",
+  "oneOf": [{"$ref": "#/$defs/executed"}, {"$ref": "#/$defs/missed"}],
+  "$defs": {
+    "cycleId": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}([+-]\\d{2}:\\d{2}|Z)?$"
+    },
+    "sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{7,40}(\\+dirty)?$"},
+    "count": {"type": "integer", "minimum": 0},
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "issue", "issue_url", "error"],
+      "properties": {
+        "action": {
+          "enum": ["created", "updated", "closed", "not-needed", "skipped",
+                   "failed", "not-run", "dry-run"]
+        },
+        "issue": {"type": ["integer", "null"]},
+        "issue_url": {"type": ["string", "null"]},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "executed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "check_id", "cycle_id", "attempt", "started_at",
+                   "finished_at", "target", "producer", "revisions", "coverage",
+                   "statuses", "problems", "execution", "delivery", "audit_tail", "ok"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "check_id": {"const": "r16-kb-freshness"},
+        "cycle_id": {"$ref": "#/$defs/cycleId"},
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+        "started_at": {"$ref": "#/$defs/timestamp"},
+        "finished_at": {"$ref": "#/$defs/timestamp"},
+        "target": {"const": "published"},
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runner", "auditor", "host"],
+          "properties": {
+            "runner": {"$ref": "#/$defs/sha"},
+            "auditor": {"$ref": "#/$defs/sha"},
+            "host": {"type": "string", "minLength": 1}
+          }
+        },
+        "revisions": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "notes": {"$ref": "#/$defs/count"},
+            "with_evidence": {"$ref": "#/$defs/count"},
+            "unparsed_frontmatter": {"$ref": "#/$defs/count"}
+          }
+        },
+        "statuses": {"type": "object", "additionalProperties": {"$ref": "#/$defs/count"}},
+        "problems": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["claims", "revisions", "coverage"],
+          "properties": {
+            "claims": {"$ref": "#/$defs/count"},
+            "revisions": {"$ref": "#/$defs/count"},
+            "coverage": {"$ref": "#/$defs/count"}
+          }
+        },
+        "execution": {"enum": ["completed", "failed"]},
+        "delivery": {"$ref": "#/$defs/delivery"},
+        "audit_tail": {"type": ["string", "null"]},
+        "ok": {"type": "boolean"}
+      }
+    },
+    "missed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "check_id", "cycle_id", "attempt", "noted_at",
+                   "execution", "revisions", "delivery", "ok"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "check_id": {"const": "r16-kb-freshness"},
+        "cycle_id": {"$ref": "#/$defs/cycleId"},
+        "attempt": {"const": 0},
+        "noted_at": {"$ref": "#/$defs/timestamp"},
+        "execution": {"const": "missed"},
+        "revisions": {"type": "object", "maxProperties": 0},
+        "delivery": {"$ref": "#/$defs/delivery"},
+        "ok": {"const": false}
+      }
+    }
+  }
+}
