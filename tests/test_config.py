@@ -89,3 +89,9 @@ def test_mirror_names_are_canonical() -> None:
     """Names renamed in 2026-07 must not creep back: a mirror directory is named by a
     plain `git clone`, so an old name resolves only where a stale clone still sits."""
     assert not {"Maestro", "open-prose"} & set(_ECOSYSTEM_REPOS)
+
+
+def test_devtools_is_mirrored() -> None:
+    """devtools left the overview 2026-07-26 and carried most ecosystem work by 2026-10,
+    so daily digests reported "no commits anywhere" for days. Regression guard."""
+    assert "devtools" in _ECOSYSTEM_REPOS

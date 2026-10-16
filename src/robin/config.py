@@ -54,6 +54,12 @@ _ECOSYSTEM_REPOS = (
     # are read from the umbrella). Registered the day the consumer appeared
     # (2026-08-26) — the maestro/libretto lesson again.
     "ai-orchestrators-workspace",
+    # Fleet tooling and DarkFactory workshop (review-pr.sh, conductor, author-agent
+    # sandbox, df installer). Kept out of the overview on 2026-07-26 as auxiliary
+    # tooling; by 2026-10 it carried most of the ecosystem's work (~100 commits in 30
+    # days) while every other mirror was quiet, so 2026-10-14..16 digests reported
+    # "no activity anywhere". Owner reversed the exclusion 2026-10-16.
+    "devtools",
     # Robin's own repo: without it "what changed?" answers are blind to Robin's own
     # development. Like every entry here it resolves to a sibling of ROBIN_VAULT — on
     # the VPS mirror layout that is a separate read-only clone (the runtime checkout
